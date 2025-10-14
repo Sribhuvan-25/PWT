@@ -21,6 +21,8 @@ import { formatDate } from '@/utils/formatters';
 import { formatCents } from '@/utils/settleUp';
 import * as ResultsRepo from '@/db/repositories/results';
 import * as BuyInsRepo from '@/db/repositories/buyins';
+import * as SessionsRepo from '@/db/repositories/sessions';
+import { calculateSettleUpTransactions } from '@/utils/settleUp';
 
 type RootStackParamList = {
   SessionDetails: { sessionId: string };
@@ -43,15 +45,17 @@ export default function SessionDetailsScreen() {
   const { user } = useAuthStore();
   const { sessions } = useSessions();
   const { members } = useMembers(sessionId);
-  const { buyIns, addBuyIn, refresh: refreshBuyIns } = useBuyIns(sessionId);
+  const { buyIns, addBuyIn } = useBuyIns(sessionId);
 
   const [addBuyInDialogVisible, setAddBuyInDialogVisible] = useState(false);
   const [cashoutDialogVisible, setCashoutDialogVisible] = useState(false);
+  const [settlementDialogVisible, setSettlementDialogVisible] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [buyInAmount, setBuyInAmount] = useState('');
   const [cashoutAmount, setCashoutAmount] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [memberData, setMemberData] = useState<MemberSessionData[]>([]);
+  const [settlements, setSettlements] = useState<Array<{ fromMemberName: string; toMemberName: string; amountCents: number }>>([]);
 
   const session = sessions.find((s) => s.id === sessionId);
 
@@ -150,6 +154,32 @@ export default function SessionDetailsScreen() {
     setCashoutDialogVisible(true);
   };
 
+  const handleCompleteSession = () => {
+    // Calculate settlements
+    const balances = memberData.map((data) => ({
+      memberId: data.memberId,
+      memberName: data.memberName,
+      totalCents: data.netResult,
+    }));
+
+    const calculated = calculateSettleUpTransactions(balances);
+    setSettlements(calculated);
+    setSettlementDialogVisible(true);
+  };
+
+  const confirmCompleteSession = async () => {
+    try {
+      setActionLoading(true);
+      await SessionsRepo.updateSessionStatus(sessionId, 'completed');
+      setSettlementDialogVisible(false);
+      Alert.alert('Success', 'Session marked as completed!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to complete session');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (!session) {
     return (
       <View style={styles.centered}>
@@ -238,32 +268,19 @@ export default function SessionDetailsScreen() {
           </Text>
         </View>
 
-        <Divider style={styles.divider} />
-
-        {/* Buy-in History */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Buy-in History</Text>
-          {buyIns.length === 0 ? (
-            <Text style={styles.emptyText}>No buy-ins yet</Text>
-          ) : (
-            buyIns.map((buyIn) => {
-              const member = members.find((m) => m.id === buyIn.memberId);
-              return (
-                <Card key={buyIn.id} style={styles.card}>
-                  <Card.Content style={styles.cardContent}>
-                    <View>
-                      <Text style={styles.memberName}>{member?.name || 'Unknown'}</Text>
-                      <Text style={styles.timestamp}>
-                        {new Date(buyIn.createdAt).toLocaleTimeString()}
-                      </Text>
-                    </View>
-                    <Text style={styles.amount}>{formatCents(buyIn.amountCents)}</Text>
-                  </Card.Content>
-                </Card>
-              );
-            })
-          )}
-        </View>
+        {/* Complete Session Button */}
+        {session.status !== 'completed' && memberData.length > 0 && (
+          <View style={styles.section}>
+            <Button
+              mode="contained"
+              onPress={handleCompleteSession}
+              style={styles.completeButton}
+              contentStyle={styles.completeButtonContent}
+            >
+              Complete Session & Settle Up
+            </Button>
+          </View>
+        )}
       </ScrollView>
 
       {/* Add Buy-in Dialog */}
@@ -321,6 +338,61 @@ export default function SessionDetailsScreen() {
             </Button>
             <Button onPress={handleSetCashout} loading={actionLoading} disabled={actionLoading}>
               Save
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Settlement Dialog */}
+      <Portal>
+        <Dialog
+          visible={settlementDialogVisible}
+          onDismiss={() => setSettlementDialogVisible(false)}
+          style={styles.settlementDialog}
+        >
+          <Dialog.Title>Complete Session</Dialog.Title>
+          <Dialog.ScrollArea>
+            <ScrollView>
+              <Text style={styles.settlementTitle}>Settlement Summary</Text>
+              <Text style={styles.settlementSubtitle}>
+                These transactions will settle all debts:
+              </Text>
+
+              {settlements.length === 0 ? (
+                <Text style={styles.settlementText}>All players are even!</Text>
+              ) : (
+                settlements.map((settlement, index) => (
+                  <Card key={index} style={styles.settlementCard}>
+                    <Card.Content>
+                      <View style={styles.settlementRow}>
+                        <Text style={styles.settlementFrom}>{settlement.fromMemberName}</Text>
+                        <Text style={styles.settlementArrow}>→</Text>
+                        <Text style={styles.settlementTo}>{settlement.toMemberName}</Text>
+                      </View>
+                      <Text style={styles.settlementAmount}>
+                        {formatCents(settlement.amountCents)}
+                      </Text>
+                    </Card.Content>
+                  </Card>
+                ))
+              )}
+
+              <Text style={styles.settlementNote}>
+                Mark this session as completed? Players can still view the details but no new transactions can be added.
+              </Text>
+            </ScrollView>
+          </Dialog.ScrollArea>
+          <Dialog.Actions>
+            <Button onPress={() => setSettlementDialogVisible(false)} disabled={actionLoading}>
+              Cancel
+            </Button>
+            <Button
+              onPress={confirmCompleteSession}
+              loading={actionLoading}
+              disabled={actionLoading}
+              mode="contained"
+            >
+              Mark as Completed
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -423,6 +495,72 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: darkColors.textMuted,
     marginBottom: spacing.md,
+  },
+  completeButton: {
+    backgroundColor: darkColors.positive,
+  },
+  completeButtonContent: {
+    paddingVertical: spacing.sm,
+  },
+  settlementDialog: {
+    maxHeight: '80%',
+  },
+  settlementTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: darkColors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  settlementSubtitle: {
+    fontSize: 14,
+    color: darkColors.textMuted,
+    marginBottom: spacing.lg,
+  },
+  settlementText: {
+    fontSize: 16,
+    color: darkColors.textPrimary,
+    textAlign: 'center',
+    marginVertical: spacing.lg,
+  },
+  settlementCard: {
+    backgroundColor: darkColors.card,
+    marginBottom: spacing.md,
+  },
+  settlementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  settlementFrom: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: darkColors.textPrimary,
+    flex: 1,
+  },
+  settlementArrow: {
+    fontSize: 18,
+    color: darkColors.accent,
+    marginHorizontal: spacing.sm,
+  },
+  settlementTo: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: darkColors.textPrimary,
+    flex: 1,
+    textAlign: 'right',
+  },
+  settlementAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: darkColors.accent,
+    textAlign: 'center',
+  },
+  settlementNote: {
+    fontSize: 12,
+    color: darkColors.textMuted,
+    fontStyle: 'italic',
+    marginTop: spacing.lg,
+    textAlign: 'center',
   },
 });
 
