@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Button, Text, ActivityIndicator } from 'react-native-paper';
 import { darkColors, spacing, typography } from '../utils/theme';
 import { signInWithGoogle } from '../services/auth';

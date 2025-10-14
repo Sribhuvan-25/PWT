@@ -13,7 +13,6 @@ import {
 import Navigation from './src/navigation';
 import { darkTheme } from './src/utils/theme';
 import { initSupabase } from './src/db/supabase';
-import { useAppStore } from './src/stores/appStore';
 import { useAuthStore } from './src/stores/authStore';
 import { onAuthStateChange, getCurrentUser } from './src/services/auth';
 import { Text } from 'react-native';
@@ -21,7 +20,6 @@ import { Text } from 'react-native';
 export default function App() {
   const [appInitialized, setAppInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isInitialized, setInitialized } = useAppStore();
   const { setUser } = useAuthStore();
 
   const [fontsLoaded] = useFonts({
@@ -34,47 +32,16 @@ export default function App() {
   useEffect(() => {
     async function initialize() {
       try {
-        console.log('🚀 Initializing app...');
-
         // Initialize Supabase
         initSupabase();
-        console.log('✅ Supabase initialized');
 
         // Initialize auth state
-        try {
-          const user = await getCurrentUser();
-          setUser(user);
-        } catch (err) {
-          console.warn('Auth initialization skipped:', err);
-          
-          // For testing: Set a dummy user if no real auth
-          // You can change this UUID to test different users:
-          // 
-          // Alice (admin of Friday Night Poker): bb0e8400-e29b-41d4-a716-446655440001
-          // Bob (member of Friday Night Poker): bb0e8400-e29b-41d4-a716-446655440002
-          // Eve (admin of Weekly Tournament): bb0e8400-e29b-41d4-a716-446655440003
-          // Henry (admin of High Stakes): bb0e8400-e29b-41d4-a716-446655440004
-          // Jack (admin of Beginner Friendly): bb0e8400-e29b-41d4-a716-446655440005
-          // 
-          // Or use "test-user-123" to see all groups
-          
-          const testUser = {
-            id: 'bb0e8400-e29b-41d4-a716-446655440001', // Alice - admin of Friday Night Poker
-            email: 'alice@test.com',
-            name: 'Alice Johnson',
-            displayName: 'Alice Johnson',
-            photoUrl: undefined,
-            createdAt: new Date().toISOString(),
-          };
-          setUser(testUser);
-          console.log('🧪 Using test user:', testUser.name);
-        }
+        const user = await getCurrentUser();
+        setUser(user);
 
         setAppInitialized(true);
-        setInitialized(true);
-        console.log('✅ App initialized successfully');
       } catch (err) {
-        console.error('❌ Initialization failed:', err);
+        console.error('Initialization failed:', err);
         setError(err instanceof Error ? err.message : 'Initialization failed');
       }
     }

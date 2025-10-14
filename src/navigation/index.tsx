@@ -124,13 +124,6 @@ export default function Navigation() {
           headerTintColor: darkColors.textPrimary,
         }}
       >
-        {/* TEMPORARY: Always show main app for testing */}
-        <Stack.Screen
-          name="Main"
-          component={MainTabs}
-          options={{ headerShown: false }}
-        />
-        {/* Commented out login for now
         {!user ? (
           <Stack.Screen
             name="Login"
@@ -144,7 +137,6 @@ export default function Navigation() {
             options={{ headerShown: false }}
           />
         )}
-        */}
       </Stack.Navigator>
     </NavigationContainer>
   );

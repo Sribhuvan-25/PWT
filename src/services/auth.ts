@@ -2,8 +2,6 @@ import { getSupabase } from '../db/supabase';
 import { User } from '../types';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
-import * as Crypto from 'expo-crypto';
-import { Alert } from 'react-native';
 
 WebBrowser.maybeCompleteAuthSession();
 

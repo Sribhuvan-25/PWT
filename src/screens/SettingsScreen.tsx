@@ -4,20 +4,10 @@ import { Text, List, Switch, Button } from 'react-native-paper';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
 import { darkColors, spacing } from '@/utils/theme';
-import { sync } from '@/db/syncManager';
 
 export default function SettingsScreen() {
   const { theme, setTheme } = useAppStore();
   const { user, setUser } = useAuthStore();
-
-  const handleSync = async () => {
-    try {
-      await sync();
-      Alert.alert('Success', 'Sync complete!');
-    } catch (error) {
-      Alert.alert('Error', 'Sync failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
 
   const handleSignOut = () => {
     Alert.alert(
@@ -72,20 +62,9 @@ export default function SettingsScreen() {
         />
       </List.Section>
 
-      <List.Section>
-        <List.Subheader style={styles.subheader}>Data</List.Subheader>
-        <List.Item
-          title="Sync Now"
-          titleStyle={styles.itemTitle}
-          description="Sync with cloud"
-          descriptionStyle={styles.itemDescription}
-          left={(props) => <List.Icon {...props} icon="cloud-sync" color={darkColors.textPrimary} />}
-          onPress={handleSync}
-        />
-      </List.Section>
-
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Poker Tracker v1.0.0</Text>
+        <Text style={styles.footerText}>PWT v1.0.0</Text>
+        <Text style={styles.footerSubtext}>Data stored securely in the cloud</Text>
       </View>
     </View>
   );
@@ -119,6 +98,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   footerText: {
+    color: darkColors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  footerSubtext: {
     color: darkColors.textMuted,
     fontSize: 12,
   },
