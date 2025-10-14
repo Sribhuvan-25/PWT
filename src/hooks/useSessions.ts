@@ -1,23 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Session } from '@/types';
 import * as SessionsRepo from '@/db/repositories/sessions';
+import { useAuthStore } from '@/stores/authStore';
 
-export function useSessions(groupId: string | null) {
+export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuthStore();
+
+  // Helper function to check if a string is a valid UUID
+  const isValidUUID = (str: string) => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  };
 
   const loadSessions = async () => {
-    if (!groupId) {
-      setSessions([]);
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
       setError(null);
-      const data = await SessionsRepo.getSessionsByGroupId(groupId);
+      
+      // If user is authenticated with a valid UUID, only load their sessions
+      // Otherwise, load all sessions (for testing with non-UUID user IDs)
+      const data = user?.id && isValidUUID(user.id)
+        ? await SessionsRepo.getUserSessions(user.id)
+        : await SessionsRepo.getAllSessions();
       setSessions(data);
     } catch (err) {
       console.error('Error loading sessions:', err);
@@ -29,11 +36,37 @@ export function useSessions(groupId: string | null) {
 
   useEffect(() => {
     loadSessions();
-  }, [groupId]);
+  }, [user?.id]);
 
-  const createSession = async (date: string, note?: string): Promise<Session> => {
-    if (!groupId) throw new Error('No group selected');
-    const session = await SessionsRepo.createSession(groupId, date, note);
+  const createSession = async (name: string, date: string, note?: string): Promise<Session> => {
+    // Only pass user ID if it's a valid UUID
+    const userId = user?.id && isValidUUID(user.id) ? user.id : undefined;
+    const session = await SessionsRepo.createSession(name, date, note, userId);
+    await loadSessions();
+    return session;
+  };
+
+  const joinSession = async (joinCode: string): Promise<Session> => {
+    const session = await SessionsRepo.getSessionByJoinCode(joinCode);
+    if (!session) {
+      throw new Error('Invalid join code');
+    }
+    
+    // Add current user as a member if authenticated
+    if (user?.id && isValidUUID(user.id)) {
+      const { getSupabase } = await import('@/db/supabase');
+      const supabase = getSupabase();
+      
+      await supabase
+        .from('session_members')
+        .insert({
+          user_id: user.id,
+          session_id: session.id,
+          role: 'member',
+          joined_at: new Date().toISOString(),
+        });
+    }
+    
     await loadSessions();
     return session;
   };
@@ -49,6 +82,7 @@ export function useSessions(groupId: string | null) {
     error,
     refresh: loadSessions,
     createSession,
+    joinSession,
     deleteSession,
   };
 }

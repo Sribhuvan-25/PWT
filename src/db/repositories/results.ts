@@ -1,110 +1,154 @@
-import { query, queryOne, execute, transaction } from '../sqlite';
+import { getSupabase } from '../supabase';
 import { Result, MemberBalance } from '@/types';
-import * as Crypto from 'expo-crypto';
+
+// Helper to convert Supabase snake_case to camelCase
+function mapSupabaseResult(row: any): Result {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    memberId: row.member_id,
+    netCents: row.net_cents,
+    cashoutCents: row.cashout_cents,
+    updatedAt: row.updated_at,
+  };
+}
 
 export async function createResult(
   sessionId: string,
   memberId: string,
-  netCents: number
+  netCents: number,
+  cashoutCents: number = 0
 ): Promise<Result> {
-  const id = Crypto.randomUUID();
-  const now = new Date().toISOString();
+  const supabase = getSupabase();
 
-  await execute(
-    'INSERT INTO results (id, sessionId, memberId, netCents, updatedAt, pendingSync) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, sessionId, memberId, netCents, now, 1]
-  );
+  const { data, error } = await supabase
+    .from('results')
+    .insert({
+      session_id: sessionId,
+      member_id: memberId,
+      net_cents: netCents,
+      cashout_cents: cashoutCents,
+    })
+    .select()
+    .single();
 
-  return {
-    id,
-    sessionId,
-    memberId,
-    netCents,
-    updatedAt: now,
-    pendingSync: 1,
-  };
-}
-
-export async function createResults(
-  results: Array<{ sessionId: string; memberId: string; netCents: number }>
-): Promise<void> {
-  const now = new Date().toISOString();
-  const statements = results.map((result) => ({
-    sql: 'INSERT INTO results (id, sessionId, memberId, netCents, updatedAt, pendingSync) VALUES (?, ?, ?, ?, ?, ?)',
-    params: [Crypto.randomUUID(), result.sessionId, result.memberId, result.netCents, now, 1],
-  }));
-
-  await transaction(statements);
+  if (error) throw error;
+  return mapSupabaseResult(data);
 }
 
 export async function getResultsBySessionId(sessionId: string): Promise<Result[]> {
-  return await query<Result>(
-    'SELECT * FROM results WHERE sessionId = ? ORDER BY netCents DESC',
-    [sessionId]
-  );
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('results')
+    .select('*')
+    .eq('session_id', sessionId);
+
+  if (error) throw error;
+  return (data || []).map(mapSupabaseResult);
 }
 
-export async function getResultById(id: string): Promise<Result | null> {
-  return await queryOne<Result>('SELECT * FROM results WHERE id = ?', [id]);
+export async function getResultBySessionAndMember(
+  sessionId: string,
+  memberId: string
+): Promise<Result | null> {
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('results')
+    .select('*')
+    .eq('session_id', sessionId)
+    .eq('member_id', memberId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // Not found
+    throw error;
+  }
+  return data ? mapSupabaseResult(data) : null;
 }
 
-export async function updateResult(id: string, netCents: number): Promise<void> {
-  const now = new Date().toISOString();
-  await execute(
-    'UPDATE results SET netCents = ?, updatedAt = ?, pendingSync = 1 WHERE id = ?',
-    [netCents, now, id]
-  );
+export async function updateResult(
+  id: string,
+  netCents: number,
+  cashoutCents: number
+): Promise<void> {
+  const supabase = getSupabase();
+  
+  const { error } = await supabase
+    .from('results')
+    .update({
+      net_cents: netCents,
+      cashout_cents: cashoutCents,
+    })
+    .eq('id', id);
+
+  if (error) throw error;
 }
 
 export async function deleteResult(id: string): Promise<void> {
-  await execute('DELETE FROM results WHERE id = ?', [id]);
-}
+  const supabase = getSupabase();
+  
+  const { error } = await supabase
+    .from('results')
+    .delete()
+    .eq('id', id);
 
-export async function getResultsPendingSync(): Promise<Result[]> {
-  return await query<Result>('SELECT * FROM results WHERE pendingSync = 1');
-}
-
-export async function markResultSynced(id: string): Promise<void> {
-  await execute('UPDATE results SET pendingSync = 0 WHERE id = ?', [id]);
-}
-
-export async function upsertResult(result: Result): Promise<void> {
-  await execute(
-    `INSERT INTO results (id, sessionId, memberId, netCents, updatedAt, pendingSync)
-     VALUES (?, ?, ?, ?, ?, 0)
-     ON CONFLICT(id) DO UPDATE SET
-       sessionId = excluded.sessionId,
-       memberId = excluded.memberId,
-       netCents = excluded.netCents,
-       updatedAt = excluded.updatedAt,
-       pendingSync = 0`,
-    [result.id, result.sessionId, result.memberId, result.netCents, result.updatedAt]
-  );
+  if (error) throw error;
 }
 
 export async function calculateMemberBalances(groupId: string): Promise<MemberBalance[]> {
-  const sql = `
-    SELECT
-      m.id as memberId,
-      m.name as memberName,
-      COALESCE(SUM(r.netCents), 0) as totalCents
-    FROM members m
-    LEFT JOIN results r ON r.memberId = m.id
-    LEFT JOIN sessions s ON s.id = r.sessionId
-    WHERE m.groupId = ?
-    GROUP BY m.id, m.name
-    ORDER BY totalCents DESC
-  `;
+  const supabase = getSupabase();
+  
+  // Get all results for the group with member names
+  const { data, error } = await supabase
+    .from('results')
+    .select(`
+      member_id,
+      net_cents,
+      members!inner(name, group_id)
+    `)
+    .eq('members.group_id', groupId);
 
-  return await query<MemberBalance>(sql, [groupId]);
-}
+  if (error) throw error;
 
-export async function getResultsByMemberId(memberId: string): Promise<Result[]> {
-  return await query<Result>(
-    `SELECT r.* FROM results r
-     JOIN sessions s ON s.id = r.sessionId
-     WHERE r.memberId = ?
-     ORDER BY s.date DESC`,
-    [memberId]
-  );
+  // Group by member and sum
+  const balanceMap = new Map<string, { memberId: string; memberName: string; totalCents: number }>();
+  
+  for (const row of data || []) {
+    const memberId = row.member_id;
+    const memberName = (row.members as any)?.name || 'Unknown';
+    const netCents = row.net_cents || 0;
+
+    if (balanceMap.has(memberId)) {
+      const existing = balanceMap.get(memberId)!;
+      existing.totalCents += netCents;
+    } else {
+      balanceMap.set(memberId, {
+        memberId,
+        memberName,
+        totalCents: netCents,
+      });
+    }
+  }
+
+  // Also include members with no results (balance = 0)
+  const { data: members, error: membersError } = await supabase
+    .from('members')
+    .select('id, name')
+    .eq('group_id', groupId);
+
+  if (membersError) throw membersError;
+
+  for (const member of members || []) {
+    if (!balanceMap.has(member.id)) {
+      balanceMap.set(member.id, {
+        memberId: member.id,
+        memberName: member.name,
+        totalCents: 0,
+      });
+    }
+  }
+
+  return Array.from(balanceMap.values());
 }

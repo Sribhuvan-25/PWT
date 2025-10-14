@@ -1,0 +1,428 @@
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import {
+  Text,
+  Card,
+  Button,
+  Portal,
+  Dialog,
+  TextInput,
+  Divider,
+  ActivityIndicator,
+  DataTable,
+} from 'react-native-paper';
+import { useRoute, RouteProp } from '@react-navigation/native';
+import { useSessions } from '@/hooks/useSessions';
+import { useMembers } from '@/hooks/useMembers';
+import { useBuyIns } from '@/hooks/useBuyIns';
+import { useAuthStore } from '@/stores/authStore';
+import { darkColors, spacing } from '@/utils/theme';
+import { formatDate } from '@/utils/formatters';
+import { formatCents } from '@/utils/settleUp';
+import * as ResultsRepo from '@/db/repositories/results';
+import * as BuyInsRepo from '@/db/repositories/buyins';
+
+type RootStackParamList = {
+  SessionDetails: { sessionId: string };
+};
+
+type SessionDetailsRouteProp = RouteProp<RootStackParamList, 'SessionDetails'>;
+
+interface MemberSessionData {
+  memberId: string;
+  memberName: string;
+  totalBuyIns: number;
+  cashout: number;
+  netResult: number;
+}
+
+export default function SessionDetailsScreen() {
+  const route = useRoute<SessionDetailsRouteProp>();
+  const { sessionId } = route.params;
+
+  const { user } = useAuthStore();
+  const { sessions } = useSessions();
+  const { members } = useMembers(sessionId);
+  const { buyIns, addBuyIn, refresh: refreshBuyIns } = useBuyIns(sessionId);
+
+  const [addBuyInDialogVisible, setAddBuyInDialogVisible] = useState(false);
+  const [cashoutDialogVisible, setCashoutDialogVisible] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [buyInAmount, setBuyInAmount] = useState('');
+  const [cashoutAmount, setCashoutAmount] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
+  const [memberData, setMemberData] = useState<MemberSessionData[]>([]);
+
+  const session = sessions.find((s) => s.id === sessionId);
+
+  useEffect(() => {
+    loadMemberData();
+  }, [buyIns, members, sessionId]);
+
+  const loadMemberData = async () => {
+    const data: MemberSessionData[] = [];
+
+    for (const member of members) {
+      const totalBuyIns = await BuyInsRepo.getTotalBuyInsByMember(sessionId, member.id);
+      const result = await ResultsRepo.getResultBySessionAndMember(sessionId, member.id);
+      const cashout = result?.cashoutCents || 0;
+      const netResult = cashout - totalBuyIns;
+
+      data.push({
+        memberId: member.id,
+        memberName: member.name,
+        totalBuyIns,
+        cashout,
+        netResult,
+      });
+    }
+
+    setMemberData(data);
+  };
+
+  const handleAddBuyIn = async () => {
+    if (!selectedMemberId || !buyInAmount.trim()) return;
+
+    const amount = parseFloat(buyInAmount);
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid buy-in amount');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await addBuyIn(selectedMemberId, Math.round(amount * 100)); // Convert to cents
+      setBuyInAmount('');
+      setAddBuyInDialogVisible(false);
+      await loadMemberData();
+      Alert.alert('Success', 'Buy-in added!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add buy-in');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSetCashout = async () => {
+    if (!selectedMemberId || !cashoutAmount.trim()) return;
+
+    const amount = parseFloat(cashoutAmount);
+    if (isNaN(amount) || amount < 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid cashout amount');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const amountCents = Math.round(amount * 100);
+      const totalBuyIns = await BuyInsRepo.getTotalBuyInsByMember(sessionId, selectedMemberId);
+      const netCents = amountCents - totalBuyIns;
+
+      // Check if result already exists
+      const existingResult = await ResultsRepo.getResultBySessionAndMember(sessionId, selectedMemberId);
+      
+      if (existingResult) {
+        await ResultsRepo.updateResult(existingResult.id, netCents, amountCents);
+      } else {
+        await ResultsRepo.createResult(sessionId, selectedMemberId, netCents, amountCents);
+      }
+
+      setCashoutAmount('');
+      setCashoutDialogVisible(false);
+      await loadMemberData();
+      Alert.alert('Success', 'Cashout recorded!');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to record cashout');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openAddBuyInDialog = (memberId: string) => {
+    setSelectedMemberId(memberId);
+    setBuyInAmount('');
+    setAddBuyInDialogVisible(true);
+  };
+
+  const openCashoutDialog = (memberId: string, currentCashout: number) => {
+    setSelectedMemberId(memberId);
+    setCashoutAmount(currentCashout > 0 ? (currentCashout / 100).toString() : '');
+    setCashoutDialogVisible(true);
+  };
+
+  if (!session) {
+    return (
+      <View style={styles.centered}>
+        <Text>Session not found</Text>
+      </View>
+    );
+  }
+
+  const selectedMember = members.find((m) => m.id === selectedMemberId);
+
+  return (
+    <View style={styles.container}>
+      <ScrollView>
+        {/* Session Header */}
+        <View style={styles.header}>
+          <Text style={styles.sessionName}>{session.name}</Text>
+          <Text style={styles.sessionDate}>{formatDate(session.date)}</Text>
+          <Text style={styles.joinCode}>Join Code: {session.joinCode}</Text>
+          {session.note && <Text style={styles.sessionNote}>{session.note}</Text>}
+          <Text style={styles.sessionStatus}>
+            Status: {session.status === 'completed' ? 'Completed' : 'Active'}
+          </Text>
+        </View>
+
+        <Divider style={styles.divider} />
+
+        {/* Member Data Table */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Session Details</Text>
+          
+          {memberData.length === 0 ? (
+            <Text style={styles.emptyText}>No participants data yet</Text>
+          ) : (
+            <DataTable>
+              <DataTable.Header>
+                <DataTable.Title>Player</DataTable.Title>
+                <DataTable.Title numeric>Buy-ins</DataTable.Title>
+                <DataTable.Title numeric>Cashout</DataTable.Title>
+                <DataTable.Title numeric>Net</DataTable.Title>
+              </DataTable.Header>
+
+              {memberData.map((data) => (
+                <DataTable.Row key={data.memberId}>
+                  <DataTable.Cell>{data.memberName}</DataTable.Cell>
+                  <DataTable.Cell numeric>
+                    <Button
+                      mode="text"
+                      compact
+                      onPress={() => openAddBuyInDialog(data.memberId)}
+                      textColor={darkColors.accent}
+                    >
+                      {formatCents(data.totalBuyIns)}
+                    </Button>
+                  </DataTable.Cell>
+                  <DataTable.Cell numeric>
+                    <Button
+                      mode="text"
+                      compact
+                      onPress={() => openCashoutDialog(data.memberId, data.cashout)}
+                      textColor={darkColors.accent}
+                    >
+                      {formatCents(data.cashout)}
+                    </Button>
+                  </DataTable.Cell>
+                  <DataTable.Cell
+                    numeric
+                    textStyle={{
+                      color:
+                        data.netResult > 0
+                          ? darkColors.positive
+                          : data.netResult < 0
+                          ? darkColors.negative
+                          : darkColors.textMuted,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {formatCents(data.netResult)}
+                  </DataTable.Cell>
+                </DataTable.Row>
+              ))}
+            </DataTable>
+          )}
+
+          <Text style={styles.hint}>
+            Tap on Buy-ins or Cashout to update values
+          </Text>
+        </View>
+
+        <Divider style={styles.divider} />
+
+        {/* Buy-in History */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Buy-in History</Text>
+          {buyIns.length === 0 ? (
+            <Text style={styles.emptyText}>No buy-ins yet</Text>
+          ) : (
+            buyIns.map((buyIn) => {
+              const member = members.find((m) => m.id === buyIn.memberId);
+              return (
+                <Card key={buyIn.id} style={styles.card}>
+                  <Card.Content style={styles.cardContent}>
+                    <View>
+                      <Text style={styles.memberName}>{member?.name || 'Unknown'}</Text>
+                      <Text style={styles.timestamp}>
+                        {new Date(buyIn.createdAt).toLocaleTimeString()}
+                      </Text>
+                    </View>
+                    <Text style={styles.amount}>{formatCents(buyIn.amountCents)}</Text>
+                  </Card.Content>
+                </Card>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Add Buy-in Dialog */}
+      <Portal>
+        <Dialog visible={addBuyInDialogVisible} onDismiss={() => setAddBuyInDialogVisible(false)}>
+          <Dialog.Title>Add Buy-in</Dialog.Title>
+          <Dialog.Content>
+            <Text style={styles.dialogText}>
+              Adding buy-in for: {selectedMember?.name}
+            </Text>
+            <TextInput
+              label="Amount"
+              value={buyInAmount}
+              onChangeText={setBuyInAmount}
+              mode="outlined"
+              placeholder="100"
+              keyboardType="numeric"
+              left={<TextInput.Affix text="$" />}
+              autoFocus
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setAddBuyInDialogVisible(false)} disabled={actionLoading}>
+              Cancel
+            </Button>
+            <Button onPress={handleAddBuyIn} loading={actionLoading} disabled={actionLoading}>
+              Add
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Set Cashout Dialog */}
+      <Portal>
+        <Dialog visible={cashoutDialogVisible} onDismiss={() => setCashoutDialogVisible(false)}>
+          <Dialog.Title>Set Cashout</Dialog.Title>
+          <Dialog.Content>
+            <Text style={styles.dialogText}>
+              Cashout amount for: {selectedMember?.name}
+            </Text>
+            <TextInput
+              label="Cashout Amount"
+              value={cashoutAmount}
+              onChangeText={setCashoutAmount}
+              mode="outlined"
+              placeholder="250"
+              keyboardType="numeric"
+              left={<TextInput.Affix text="$" />}
+              autoFocus
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setCashoutDialogVisible(false)} disabled={actionLoading}>
+              Cancel
+            </Button>
+            <Button onPress={handleSetCashout} loading={actionLoading} disabled={actionLoading}>
+              Save
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: darkColors.background,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  header: {
+    padding: spacing.lg,
+    backgroundColor: darkColors.card,
+  },
+  sessionName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: darkColors.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  sessionDate: {
+    fontSize: 16,
+    color: darkColors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  joinCode: {
+    fontSize: 14,
+    color: darkColors.accent,
+    marginBottom: spacing.sm,
+    fontWeight: '600',
+  },
+  sessionNote: {
+    fontSize: 14,
+    color: darkColors.textMuted,
+    marginBottom: spacing.xs,
+  },
+  sessionStatus: {
+    fontSize: 14,
+    color: darkColors.accent,
+  },
+  divider: {
+    backgroundColor: darkColors.border,
+    marginVertical: spacing.md,
+  },
+  section: {
+    padding: spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: darkColors.textPrimary,
+    marginBottom: spacing.md,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: darkColors.textMuted,
+    textAlign: 'center',
+    marginVertical: spacing.lg,
+  },
+  hint: {
+    fontSize: 12,
+    color: darkColors.textMuted,
+    fontStyle: 'italic',
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  card: {
+    backgroundColor: darkColors.card,
+    marginBottom: spacing.sm,
+  },
+  cardContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  memberName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: darkColors.textPrimary,
+  },
+  timestamp: {
+    fontSize: 12,
+    color: darkColors.textMuted,
+    marginTop: 2,
+  },
+  amount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: darkColors.accent,
+  },
+  dialogText: {
+    fontSize: 14,
+    color: darkColors.textMuted,
+    marginBottom: spacing.md,
+  },
+});
+

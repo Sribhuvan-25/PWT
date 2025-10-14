@@ -1,93 +1,87 @@
-import { query, queryOne, execute } from '../sqlite';
+import { getSupabase } from '../supabase';
 import { Settlement } from '@/types';
-import * as Crypto from 'expo-crypto';
+
+// Helper to convert Supabase snake_case to camelCase
+function mapSupabaseSettlement(row: any): Settlement {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    fromMemberId: row.from_member_id,
+    toMemberId: row.to_member_id,
+    amountCents: row.amount_cents,
+    settledAt: row.settled_at,
+    note: row.note,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 export async function createSettlement(
-  groupId: string,
+  sessionId: string,
   fromMemberId: string,
   toMemberId: string,
   amountCents: number,
   note?: string
 ): Promise<Settlement> {
-  const id = Crypto.randomUUID();
+  const supabase = getSupabase();
   const now = new Date().toISOString();
 
-  await execute(
-    'INSERT INTO settlements (id, groupId, fromMemberId, toMemberId, amountCents, settledAt, note, createdAt, updatedAt, pendingSync) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, groupId, fromMemberId, toMemberId, amountCents, now, note || null, now, now, 1]
-  );
+  const { data, error } = await supabase
+    .from('settlements')
+    .insert({
+      session_id: sessionId,
+      from_member_id: fromMemberId,
+      to_member_id: toMemberId,
+      amount_cents: amountCents,
+      settled_at: now,
+      note,
+    })
+    .select()
+    .single();
 
-  return {
-    id,
-    groupId,
-    fromMemberId,
-    toMemberId,
-    amountCents,
-    settledAt: now,
-    note,
-    createdAt: now,
-    updatedAt: now,
-    pendingSync: 1,
-  };
+  if (error) throw error;
+  return mapSupabaseSettlement(data);
 }
 
-export async function getSettlementsByGroupId(groupId: string): Promise<Settlement[]> {
-  return await query<Settlement>(
-    'SELECT * FROM settlements WHERE groupId = ? ORDER BY settledAt DESC',
-    [groupId]
-  );
+export async function getSettlementsBySessionId(sessionId: string): Promise<Settlement[]> {
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('settlements')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('settled_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapSupabaseSettlement);
 }
 
 export async function getTotalSettledAmount(
-  groupId: string,
+  sessionId: string,
   fromMemberId: string,
   toMemberId: string
 ): Promise<number> {
-  const result = await queryOne<{ total: number }>(
-    `SELECT COALESCE(SUM(amountCents), 0) as total
-     FROM settlements
-     WHERE groupId = ? AND fromMemberId = ? AND toMemberId = ?`,
-    [groupId, fromMemberId, toMemberId]
-  );
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('settlements')
+    .select('amount_cents')
+    .eq('session_id', sessionId)
+    .eq('from_member_id', fromMemberId)
+    .eq('to_member_id', toMemberId);
 
-  return result?.total || 0;
-}
-
-export async function getSettlementsPendingSync(): Promise<Settlement[]> {
-  return await query<Settlement>('SELECT * FROM settlements WHERE pendingSync = 1');
-}
-
-export async function markSettlementSynced(id: string): Promise<void> {
-  await execute('UPDATE settlements SET pendingSync = 0 WHERE id = ?', [id]);
-}
-
-export async function upsertSettlement(settlement: Settlement): Promise<void> {
-  await execute(
-    `INSERT INTO settlements (id, groupId, fromMemberId, toMemberId, amountCents, settledAt, note, createdAt, updatedAt, pendingSync)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-     ON CONFLICT(id) DO UPDATE SET
-       groupId = excluded.groupId,
-       fromMemberId = excluded.fromMemberId,
-       toMemberId = excluded.toMemberId,
-       amountCents = excluded.amountCents,
-       settledAt = excluded.settledAt,
-       note = excluded.note,
-       updatedAt = excluded.updatedAt,
-       pendingSync = 0`,
-    [
-      settlement.id,
-      settlement.groupId,
-      settlement.fromMemberId,
-      settlement.toMemberId,
-      settlement.amountCents,
-      settlement.settledAt,
-      settlement.note,
-      settlement.createdAt,
-      settlement.updatedAt,
-    ]
-  );
+  if (error) throw error;
+  
+  return (data || []).reduce((sum, row) => sum + (row.amount_cents || 0), 0);
 }
 
 export async function deleteSettlement(id: string): Promise<void> {
-  await execute('DELETE FROM settlements WHERE id = ?', [id]);
+  const supabase = getSupabase();
+  
+  const { error } = await supabase
+    .from('settlements')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
 }

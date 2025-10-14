@@ -8,6 +8,8 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
 
   try {
     db = await SQLite.openDatabaseAsync('poker-tracker.db');
+    // Enable foreign key constraints
+    await db.execAsync('PRAGMA foreign_keys = ON;');
     await runMigrations(db);
     console.log('✅ SQLite database initialized');
     return db;
@@ -36,7 +38,22 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
       await migrateDatabase(database, currentVersion, SCHEMA_VERSION);
       console.log(`🔄 Database migrated from v${currentVersion} to v${SCHEMA_VERSION}`);
     } else {
-      console.log(`✓ Database schema up to date (v${SCHEMA_VERSION})`);
+      // Check if all tables exist, if not recreate them
+      const tables = await database.getAllAsync<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+      );
+      const expectedTables = ['groups', 'members', 'sessions', 'results', 'buy_ins', 'group_members', 'settlements', 'app_metadata'];
+      const existingTableNames = tables.map(t => t.name);
+      const missingTables = expectedTables.filter(table => !existingTableNames.includes(table));
+      
+      if (missingTables.length > 0) {
+        console.log(`⚠️ Missing tables: ${missingTables.join(', ')}. Recreating schema...`);
+        await database.execAsync(CREATE_TABLES_SQL);
+        await setSchemaVersion(database, SCHEMA_VERSION);
+        console.log(`📦 Database schema recreated (v${SCHEMA_VERSION})`);
+      } else {
+        console.log(`✓ Database schema up to date (v${SCHEMA_VERSION})`);
+      }
     }
   } catch (error) {
     console.error('Migration error:', error);

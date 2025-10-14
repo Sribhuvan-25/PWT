@@ -35,10 +35,10 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL !== 'your-project-url');
 }
 
-export async function fetchGroups() {
+export async function fetchSessions() {
   const client = getSupabase();
   const { data, error } = await client
-    .from('groups')
+    .from('sessions')
     .select('*')
     .order('created_at', { ascending: false });
 
@@ -46,10 +46,10 @@ export async function fetchGroups() {
   return data;
 }
 
-export async function fetchGroupByJoinCode(joinCode: string) {
+export async function fetchSessionByJoinCode(joinCode: string) {
   const client = getSupabase();
   const { data, error } = await client
-    .from('groups')
+    .from('sessions')
     .select('*')
     .eq('join_code', joinCode)
     .single();
@@ -58,25 +58,13 @@ export async function fetchGroupByJoinCode(joinCode: string) {
   return data;
 }
 
-export async function fetchMembers(groupId: string) {
+export async function fetchMembers(sessionId: string) {
   const client = getSupabase();
   const { data, error } = await client
     .from('members')
     .select('*')
-    .eq('group_id', groupId)
+    .eq('session_id', sessionId)
     .order('name', { ascending: true });
-
-  if (error) throw error;
-  return data;
-}
-
-export async function fetchSessions(groupId: string) {
-  const client = getSupabase();
-  const { data, error } = await client
-    .from('sessions')
-    .select('*')
-    .eq('group_id', groupId)
-    .order('date', { ascending: false });
 
   if (error) throw error;
   return data;
@@ -106,23 +94,21 @@ export async function upsertRecords(table: string, records: any[]) {
 export async function pullChanges(lastSyncAt: string) {
   const client = getSupabase();
 
-  const [groups, members, sessions, results] = await Promise.all([
-    client.from('groups').select('*').gte('updated_at', lastSyncAt),
-    client.from('members').select('*').gte('updated_at', lastSyncAt),
+  const [sessions, members, results] = await Promise.all([
     client.from('sessions').select('*').gte('updated_at', lastSyncAt),
+    client.from('members').select('*').gte('updated_at', lastSyncAt),
     client.from('results').select('*').gte('updated_at', lastSyncAt),
   ]);
 
   return {
-    groups: groups.data || [],
-    members: members.data || [],
     sessions: sessions.data || [],
+    members: members.data || [],
     results: results.data || [],
   };
 }
 
-export function subscribeToGroup(
-  groupId: string,
+export function subscribeToSession(
+  sessionId: string,
   callbacks: {
     onSessionChange?: (payload: any) => void;
     onResultChange?: (payload: any) => void;
@@ -132,14 +118,14 @@ export function subscribeToGroup(
   const client = getSupabase();
 
   const channel = client
-    .channel(`group:${groupId}`)
+    .channel(`session:${sessionId}`)
     .on(
       'postgres_changes',
       {
         event: '*',
         schema: 'public',
         table: 'sessions',
-        filter: `group_id=eq.${groupId}`,
+        filter: `id=eq.${sessionId}`,
       },
       (payload) => {
         console.log('🔔 Session change:', payload);
@@ -152,6 +138,7 @@ export function subscribeToGroup(
         event: '*',
         schema: 'public',
         table: 'results',
+        filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
         console.log('🔔 Result change:', payload);
@@ -164,7 +151,7 @@ export function subscribeToGroup(
         event: '*',
         schema: 'public',
         table: 'members',
-        filter: `group_id=eq.${groupId}`,
+        filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
         console.log('🔔 Member change:', payload);

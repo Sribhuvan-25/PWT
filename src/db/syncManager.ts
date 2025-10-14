@@ -1,12 +1,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { isSupabaseConfigured, pullChanges, upsertRecords } from './supabase';
 import { query, queryOne, execute } from './sqlite';
-import { Group, Member, Session, Result } from '@/types';
-import {
-  getGroupsPendingSync,
-  markGroupSynced,
-  upsertGroup as upsertGroupLocal,
-} from './repositories/groups';
+import { Member, Session, Result } from '@/types';
 import {
   getMembersPendingSync,
   markMemberSynced,
@@ -69,16 +64,19 @@ async function pullFromSupabase(): Promise<void> {
   const lastSync = await getLastSyncTimestamp();
   const changes = await pullChanges(lastSync);
 
-  for (const group of changes.groups) {
-    const local = await queryOne<Group>('SELECT * FROM groups WHERE id = ?', [group.id]);
+  for (const session of changes.sessions) {
+    const local = await queryOne<Session>('SELECT * FROM sessions WHERE id = ?', [session.id]);
 
-    if (!local || new Date(group.updated_at) > new Date(local.updatedAt || '')) {
-      await upsertGroupLocal({
-        id: group.id,
-        name: group.name,
-        joinCode: group.join_code,
-        createdAt: group.created_at,
-        updatedAt: group.updated_at,
+    if (!local || new Date(session.updated_at) > new Date(local.updatedAt || '')) {
+      await upsertSessionLocal({
+        id: session.id,
+        name: session.name,
+        joinCode: session.join_code,
+        date: session.date,
+        note: session.note,
+        status: session.status,
+        createdAt: session.created_at,
+        updatedAt: session.updated_at,
       });
     }
   }
@@ -89,25 +87,10 @@ async function pullFromSupabase(): Promise<void> {
     if (!local || new Date(member.updated_at) > new Date(local.updatedAt || '')) {
       await upsertMemberLocal({
         id: member.id,
-        groupId: member.group_id,
+        sessionId: member.session_id,
         name: member.name,
         createdAt: member.created_at,
         updatedAt: member.updated_at,
-      });
-    }
-  }
-
-  for (const session of changes.sessions) {
-    const local = await queryOne<Session>('SELECT * FROM sessions WHERE id = ?', [session.id]);
-
-    if (!local || new Date(session.updated_at) > new Date(local.updatedAt || '')) {
-      await upsertSessionLocal({
-        id: session.id,
-        groupId: session.group_id,
-        date: session.date,
-        note: session.note,
-        createdAt: session.created_at,
-        updatedAt: session.updated_at,
       });
     }
   }
@@ -127,7 +110,7 @@ async function pullFromSupabase(): Promise<void> {
   }
 
   console.log(
-    `✅ Pulled ${changes.groups.length} groups, ${changes.members.length} members, ${changes.sessions.length} sessions, ${changes.results.length} results`
+    `✅ Pulled ${changes.sessions.length} sessions, ${changes.members.length} members, ${changes.results.length} results`
   );
 }
 
@@ -139,30 +122,32 @@ async function pushToSupabase(): Promise<void> {
 
   console.log('⬆️ Pushing changes to Supabase...');
 
-  const groups = await getGroupsPendingSync();
-  const members = await getMembersPendingSync();
   const sessions = await getSessionsPendingSync();
+  const members = await getMembersPendingSync();
   const results = await getResultsPendingSync();
 
-  if (groups.length > 0) {
-    const payload = groups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      join_code: g.joinCode,
-      created_at: g.createdAt,
-      updated_at: g.updatedAt,
+  if (sessions.length > 0) {
+    const payload = sessions.map((s) => ({
+      id: s.id,
+      name: s.name,
+      join_code: s.joinCode,
+      date: s.date,
+      note: s.note,
+      status: s.status,
+      created_at: s.createdAt,
+      updated_at: s.updatedAt,
     }));
-    await upsertRecords('groups', payload);
+    await upsertRecords('sessions', payload);
 
-    for (const group of groups) {
-      await markGroupSynced(group.id);
+    for (const session of sessions) {
+      await markSessionSynced(session.id);
     }
   }
 
   if (members.length > 0) {
     const payload = members.map((m) => ({
       id: m.id,
-      group_id: m.groupId,
+      session_id: m.sessionId,
       name: m.name,
       created_at: m.createdAt,
       updated_at: m.updatedAt,
@@ -171,22 +156,6 @@ async function pushToSupabase(): Promise<void> {
 
     for (const member of members) {
       await markMemberSynced(member.id);
-    }
-  }
-
-  if (sessions.length > 0) {
-    const payload = sessions.map((s) => ({
-      id: s.id,
-      group_id: s.groupId,
-      date: s.date,
-      note: s.note,
-      created_at: s.createdAt,
-      updated_at: s.updatedAt,
-    }));
-    await upsertRecords('sessions', payload);
-
-    for (const session of sessions) {
-      await markSessionSynced(session.id);
     }
   }
 
@@ -206,7 +175,7 @@ async function pushToSupabase(): Promise<void> {
   }
 
   console.log(
-    `✅ Pushed ${groups.length} groups, ${members.length} members, ${sessions.length} sessions, ${results.length} results`
+    `✅ Pushed ${sessions.length} sessions, ${members.length} members, ${results.length} results`
   );
 }
 

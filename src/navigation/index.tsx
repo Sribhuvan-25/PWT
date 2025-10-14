@@ -5,9 +5,9 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 
 import LoginScreen from '../screens/LoginScreen';
-import GroupsScreen from '../screens/GroupsScreen';
 import SessionsScreen from '../screens/SessionsScreen';
-import BalancesScreen from '../screens/BalancesScreen';
+import SessionDetailsScreen from '../screens/SessionDetailsScreen';
+import StatsScreen from '../screens/StatsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
 import { darkColors } from '../utils/theme';
@@ -15,6 +15,31 @@ import { useAuthStore } from '../stores/authStore';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+const SessionsStack = createStackNavigator();
+
+function SessionsNavigator() {
+  return (
+    <SessionsStack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: darkColors.card,
+        },
+        headerTintColor: darkColors.textPrimary,
+      }}
+    >
+      <SessionsStack.Screen 
+        name="SessionsList" 
+        component={SessionsScreen}
+        options={{ title: 'Sessions' }}
+      />
+      <SessionsStack.Screen 
+        name="SessionDetails" 
+        component={SessionDetailsScreen}
+        options={{ title: 'Session Details' }}
+      />
+    </SessionsStack.Navigator>
+  );
+}
 
 function MainTabs() {
   return (
@@ -23,11 +48,9 @@ function MainTabs() {
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap;
 
-          if (route.name === 'Groups') {
-            iconName = focused ? 'people' : 'people-outline';
-          } else if (route.name === 'Sessions') {
+          if (route.name === 'Sessions') {
             iconName = focused ? 'calendar' : 'calendar-outline';
-          } else if (route.name === 'Balances') {
+          } else if (route.name === 'Stats') {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
           } else {
             iconName = focused ? 'settings' : 'settings-outline';
@@ -47,9 +70,12 @@ function MainTabs() {
         headerTintColor: darkColors.textPrimary,
       })}
     >
-      <Tab.Screen name="Groups" component={GroupsScreen} />
-      <Tab.Screen name="Sessions" component={SessionsScreen} />
-      <Tab.Screen name="Balances" component={BalancesScreen} />
+      <Tab.Screen 
+        name="Sessions" 
+        component={SessionsNavigator}
+        options={{ headerShown: false }}
+      />
+      <Tab.Screen name="Stats" component={StatsScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
@@ -98,6 +124,13 @@ export default function Navigation() {
           headerTintColor: darkColors.textPrimary,
         }}
       >
+        {/* TEMPORARY: Always show main app for testing */}
+        <Stack.Screen
+          name="Main"
+          component={MainTabs}
+          options={{ headerShown: false }}
+        />
+        {/* Commented out login for now
         {!user ? (
           <Stack.Screen
             name="Login"
@@ -111,6 +144,7 @@ export default function Navigation() {
             options={{ headerShown: false }}
           />
         )}
+        */}
       </Stack.Navigator>
     </NavigationContainer>
   );

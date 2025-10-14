@@ -9,10 +9,13 @@ export interface User {
   createdAt: string;
 }
 
-export interface Group {
+export interface Session {
   id: string;
   name: string;
   joinCode: string;
+  date: string;
+  note?: string;
+  status?: 'active' | 'completed';
   createdAt: string;
   updatedAt?: string;
   pendingSync?: number;
@@ -20,19 +23,9 @@ export interface Group {
 
 export interface Member {
   id: string;
-  groupId: string;
-  userId?: string;
+  sessionId: string;
+  userId?: string; // Link to authenticated user (optional for existing members)
   name: string;
-  createdAt: string;
-  updatedAt?: string;
-  pendingSync?: number;
-}
-
-export interface Session {
-  id: string;
-  groupId: string;
-  date: string;
-  note?: string;
   createdAt: string;
   updatedAt?: string;
   pendingSync?: number;
@@ -43,20 +36,30 @@ export interface Result {
   sessionId: string;
   memberId: string;
   netCents: number;
+  cashoutCents?: number;
   updatedAt: string;
   pendingSync?: number;
 }
 
-export interface GroupMember {
+export interface BuyIn {
+  id: string;
+  sessionId: string;
+  memberId: string;
+  amountCents: number;
+  createdAt: string;
+  pendingSync?: number;
+}
+
+export interface SessionMember {
   userId: string;
-  groupId: string;
+  sessionId: string;
   role: 'admin' | 'member';
   joinedAt: string;
 }
 
 export interface Settlement {
   id: string;
-  groupId: string;
+  sessionId: string;
   fromMemberId: string;
   toMemberId: string;
   amountCents: number;

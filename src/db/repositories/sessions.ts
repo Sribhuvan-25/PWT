@@ -1,76 +1,148 @@
-import { query, queryOne, execute } from '../sqlite';
+import { getSupabase } from '../supabase';
 import { Session } from '@/types';
-import * as Crypto from 'expo-crypto';
 
-export async function createSession(
-  groupId: string,
-  date: string,
-  note?: string
-): Promise<Session> {
-  const id = Crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  await execute(
-    'INSERT INTO sessions (id, groupId, date, note, createdAt, updatedAt, pendingSync) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, groupId, date, note || null, now, now, 1]
-  );
-
+// Helper to convert Supabase snake_case to camelCase
+function mapSupabaseSession(row: any): Session {
   return {
-    id,
-    groupId,
-    date,
-    note,
-    createdAt: now,
-    updatedAt: now,
-    pendingSync: 1,
+    id: row.id,
+    name: row.name,
+    joinCode: row.join_code,
+    date: row.date,
+    note: row.note,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
-export async function getSessionsByGroupId(groupId: string): Promise<Session[]> {
-  return await query<Session>(
-    'SELECT * FROM sessions WHERE groupId = ? ORDER BY date DESC, createdAt DESC',
-    [groupId]
-  );
+// Helper to generate a random join code
+function generateJoinCode(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+export async function createSession(
+  name: string,
+  date: string,
+  note?: string,
+  userId?: string
+): Promise<Session> {
+  const supabase = getSupabase();
+
+  const joinCode = generateJoinCode();
+  const { data, error } = await supabase
+    .from('sessions')
+    .insert({
+      name,
+      join_code: joinCode,
+      date,
+      note,
+      status: 'active',
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  
+  const session = mapSupabaseSession(data);
+  
+  // Add creator as admin if userId provided
+  if (userId) {
+    await supabase
+      .from('session_members')
+      .insert({
+        user_id: userId,
+        session_id: session.id,
+        role: 'admin',
+        joined_at: new Date().toISOString(),
+      });
+  }
+  
+  return session;
+}
+
+export async function getAllSessions(): Promise<Session[]> {
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .order('date', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapSupabaseSession);
+}
+
+export async function getSessionByJoinCode(joinCode: string): Promise<Session | null> {
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('join_code', joinCode.toUpperCase())
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // Not found
+    throw error;
+  }
+  return data ? mapSupabaseSession(data) : null;
+}
+
+export async function getUserSessions(userId: string): Promise<Session[]> {
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*, session_members!inner(user_id)')
+    .eq('session_members.user_id', userId)
+    .order('date', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapSupabaseSession);
 }
 
 export async function getSessionById(id: string): Promise<Session | null> {
-  return await queryOne<Session>('SELECT * FROM sessions WHERE id = ?', [id]);
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // Not found
+    throw error;
+  }
+  return data ? mapSupabaseSession(data) : null;
 }
 
 export async function updateSession(
   id: string,
-  date: string,
-  note?: string
+  updates: { note?: string; status?: 'active' | 'completed' }
 ): Promise<void> {
-  const now = new Date().toISOString();
-  await execute(
-    'UPDATE sessions SET date = ?, note = ?, updatedAt = ?, pendingSync = 1 WHERE id = ?',
-    [date, note || null, now, id]
-  );
+  const supabase = getSupabase();
+  
+  const { error } = await supabase
+    .from('sessions')
+    .update(updates)
+    .eq('id', id);
+
+  if (error) throw error;
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  await execute('DELETE FROM sessions WHERE id = ?', [id]);
-}
+  const supabase = getSupabase();
+  
+  const { error } = await supabase
+    .from('sessions')
+    .delete()
+    .eq('id', id);
 
-export async function getSessionsPendingSync(): Promise<Session[]> {
-  return await query<Session>('SELECT * FROM sessions WHERE pendingSync = 1');
-}
-
-export async function markSessionSynced(id: string): Promise<void> {
-  await execute('UPDATE sessions SET pendingSync = 0 WHERE id = ?', [id]);
-}
-
-export async function upsertSession(session: Session): Promise<void> {
-  await execute(
-    `INSERT INTO sessions (id, groupId, date, note, createdAt, updatedAt, pendingSync)
-     VALUES (?, ?, ?, ?, ?, ?, 0)
-     ON CONFLICT(id) DO UPDATE SET
-       groupId = excluded.groupId,
-       date = excluded.date,
-       note = excluded.note,
-       updatedAt = excluded.updatedAt,
-       pendingSync = 0`,
-    [session.id, session.groupId, session.date, session.note, session.createdAt, session.updatedAt]
-  );
+  if (error) throw error;
 }

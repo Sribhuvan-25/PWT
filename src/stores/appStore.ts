@@ -3,20 +3,20 @@ import { ThemeMode } from '@/types';
 
 interface AppState {
   theme: ThemeMode;
-  selectedGroupId: string | null;
+  selectedSessionId: string | null;
   isInitialized: boolean;
 
   setTheme: (theme: ThemeMode) => void;
-  setSelectedGroup: (groupId: string | null) => void;
+  setSelectedSession: (sessionId: string | null) => void;
   setInitialized: (initialized: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
   theme: 'dark',
-  selectedGroupId: null,
+  selectedSessionId: null,
   isInitialized: false,
 
   setTheme: (theme) => set({ theme }),
-  setSelectedGroup: (groupId) => set({ selectedGroupId: groupId }),
+  setSelectedSession: (sessionId) => set({ selectedSessionId: sessionId }),
   setInitialized: (initialized) => set({ isInitialized: initialized }),
 }));

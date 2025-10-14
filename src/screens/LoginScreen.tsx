@@ -56,10 +56,6 @@ export default function LoginScreen() {
             <Text style={styles.errorText}>{error}</Text>
           )}
         </View>
-
-        <Text style={styles.footer}>
-          Sign in to sync your data across devices
-        </Text>
       </View>
     </View>
   );

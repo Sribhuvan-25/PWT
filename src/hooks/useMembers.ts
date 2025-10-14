@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { Member } from '@/types';
 import * as MembersRepo from '@/db/repositories/members';
 
-export function useMembers(groupId: string | null) {
+export function useMembers(sessionId: string | null) {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadMembers = async () => {
-    if (!groupId) {
+    if (!sessionId) {
       setMembers([]);
       setLoading(false);
       return;
@@ -17,7 +17,7 @@ export function useMembers(groupId: string | null) {
     try {
       setLoading(true);
       setError(null);
-      const data = await MembersRepo.getMembersByGroupId(groupId);
+      const data = await MembersRepo.getMembersBySessionId(sessionId);
       setMembers(data);
     } catch (err) {
       console.error('Error loading members:', err);
@@ -29,11 +29,11 @@ export function useMembers(groupId: string | null) {
 
   useEffect(() => {
     loadMembers();
-  }, [groupId]);
+  }, [sessionId]);
 
   const addMember = async (name: string): Promise<Member> => {
-    if (!groupId) throw new Error('No group selected');
-    const member = await MembersRepo.createMember(groupId, name);
+    if (!sessionId) throw new Error('No session selected');
+    const member = await MembersRepo.createMember(sessionId, name);
     await loadMembers();
     return member;
   };
