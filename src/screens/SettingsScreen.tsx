@@ -3,13 +3,14 @@ import { View, StyleSheet, Alert } from 'react-native';
 import { Text, List, Switch, Button } from 'react-native-paper';
 import { useAppStore } from '@/stores/appStore';
 import { useAuthStore } from '@/stores/authStore';
+import { signOut } from '@/services/auth';
 import { darkColors, spacing } from '@/utils/theme';
 
 export default function SettingsScreen() {
   const { theme, setTheme } = useAppStore();
   const { user, setUser } = useAuthStore();
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -18,7 +19,16 @@ export default function SettingsScreen() {
         {
           text: 'Sign Out',
           style: 'destructive',
-          onPress: () => setUser(null),
+          onPress: async () => {
+            try {
+              await signOut();
+              setUser(null);
+            } catch (error) {
+              console.error('Error signing out:', error);
+              // Still clear local state even if server sign-out fails
+              setUser(null);
+            }
+          },
         },
       ]
     );

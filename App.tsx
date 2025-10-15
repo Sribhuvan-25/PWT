@@ -35,14 +35,9 @@ export default function App() {
         // Initialize Supabase
         initSupabase();
 
-        // TEMPORARY: Test user for development (remove when OAuth is working)
-        const testUser = {
-          id: '11111111-1111-1111-1111-111111111111',
-          email: 'test@poker.com',
-          displayName: 'Test User',
-          createdAt: new Date().toISOString(),
-        };
-        setUser(testUser);
+        // Check for existing user session
+        const currentUser = await getCurrentUser();
+        setUser(currentUser);
 
         setAppInitialized(true);
       } catch (err) {

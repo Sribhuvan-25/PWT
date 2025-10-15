@@ -26,6 +26,9 @@ export async function signInWithGoogle(): Promise<User | null> {
       options: {
         redirectTo,
         skipBrowserRedirect: false,
+        queryParams: {
+          prompt: 'select_account', // Force Google to show account picker
+        },
       },
     });
 
@@ -41,27 +44,49 @@ export async function signInWithGoogle(): Promise<User | null> {
       console.log('OAuth result:', result);
 
       if (result.type === 'success' && result.url) {
+        console.log('✅ OAuth succeeded, processing URL...');
         // Extract the URL params and exchange for session
-        const url = new URL(result.url);
-        const accessToken = url.searchParams.get('access_token');
-        const refreshToken = url.searchParams.get('refresh_token');
+        // Supabase returns tokens in the hash fragment, not query params
+        const url = result.url;
+        console.log('Full URL:', url);
+        const hashIndex = url.indexOf('#');
+        console.log('Hash index:', hashIndex);
 
-        if (accessToken && refreshToken) {
-          const { data: { session }, error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
+        if (hashIndex !== -1) {
+          const hashFragment = url.substring(hashIndex + 1);
+          console.log('Hash fragment:', hashFragment);
+          const hashParams = new URLSearchParams(hashFragment);
+          const accessToken = hashParams.get('access_token');
+          const refreshToken = hashParams.get('refresh_token');
+
+          console.log('Extracted tokens:', {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            accessTokenLength: accessToken?.length,
+            refreshTokenLength: refreshToken?.length
           });
 
-          if (sessionError) throw sessionError;
+          if (accessToken && refreshToken) {
+            const { data: { session }, error: sessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            });
 
-          if (session?.user) {
-            return {
-              id: session.user.id,
-              email: session.user.email!,
-              displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
-              photoUrl: session.user.user_metadata?.avatar_url,
-              createdAt: session.user.created_at,
-            };
+            if (sessionError) {
+              console.error('Session error:', sessionError);
+              throw sessionError;
+            }
+
+            if (session?.user) {
+              console.log('User authenticated:', session.user.email);
+              return {
+                id: session.user.id,
+                email: session.user.email!,
+                displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+                photoUrl: session.user.user_metadata?.avatar_url,
+                createdAt: session.user.created_at,
+              };
+            }
           }
         }
       }
@@ -75,9 +100,21 @@ export async function signInWithGoogle(): Promise<User | null> {
 }
 
 export async function signOut(): Promise<void> {
-  const supabase = getSupabase();
-  const { error } = await supabase.auth.signOut();
-  if (error) throw error;
+  try {
+    const supabase = getSupabase();
+
+    // Sign out from Supabase (clears session and cookies)
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Supabase sign out error:', error);
+      throw error;
+    }
+
+    console.log('✅ Successfully signed out');
+  } catch (error) {
+    console.error('Sign out error:', error);
+    throw error;
+  }
 }
 
 export async function getCurrentUser(): Promise<User | null> {

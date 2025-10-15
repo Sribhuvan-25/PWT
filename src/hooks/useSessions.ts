@@ -40,8 +40,9 @@ export function useSessions() {
 
   const createSession = async (name: string, date: string, note?: string): Promise<Session> => {
     // Only pass user ID if it's a valid UUID
-    const userId = user?.id && isValidUUID(user.id) ? user.id : undefined;
-    const session = await SessionsRepo.createSession(name, date, note, userId);
+    const userId = user?.id && isValidUUID(user.id) ? user.id : user?.id;
+    const userName = user?.displayName || user?.name || user?.email?.split('@')[0] || 'Unknown User';
+    const session = await SessionsRepo.createSession(name, date, note, userId, userName);
     await loadSessions();
     return session;
   };
@@ -51,22 +52,45 @@ export function useSessions() {
     if (!session) {
       throw new Error('Invalid join code');
     }
-    
-    // Add current user as a member if authenticated
+
+    const { getSupabase } = await import('@/db/supabase');
+    const supabase = getSupabase();
+
+    // Add current user as a member to session_members (for authenticated users)
     if (user?.id && isValidUUID(user.id)) {
-      const { getSupabase } = await import('@/db/supabase');
-      const supabase = getSupabase();
-      
-      await supabase
-        .from('session_members')
-        .insert({
-          user_id: user.id,
-          session_id: session.id,
-          role: 'member',
-          joined_at: new Date().toISOString(),
-        });
+      try {
+        await supabase
+          .from('session_members')
+          .insert({
+            user_id: user.id,
+            session_id: session.id,
+            role: 'member',
+            joined_at: new Date().toISOString(),
+          });
+      } catch (err) {
+        console.error('Error adding user to session_members:', err);
+        // Continue even if this fails
+      }
     }
-    
+
+    // Always create a Member entry (for the participant list)
+    if (user?.id) {
+      const userName = user?.displayName || user?.name || user?.email?.split('@')[0] || 'Unknown User';
+      try {
+        await supabase
+          .from('members')
+          .insert({
+            session_id: session.id,
+            user_id: user.id,
+            name: userName,
+            created_at: new Date().toISOString(),
+          });
+      } catch (err) {
+        console.error('Error adding user to members:', err);
+        throw err; // This is critical, so throw
+      }
+    }
+
     await loadSessions();
     return session;
   };

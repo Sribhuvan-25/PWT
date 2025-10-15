@@ -82,7 +82,7 @@ function MainTabs() {
 }
 
 export default function Navigation() {
-  // const { user } = useAuthStore(); // COMMENTED OUT FOR TESTING
+  const { user } = useAuthStore();
 
   return (
     <NavigationContainer
@@ -124,20 +124,19 @@ export default function Navigation() {
           headerTintColor: darkColors.textPrimary,
         }}
       >
-        {/* COMMENTED OUT AUTH CHECK FOR TESTING */}
-        {/* {!user ? (
+        {!user ? (
           <Stack.Screen
             name="Login"
             component={LoginScreen}
             options={{ headerShown: false }}
           />
-        ) : ( */}
+        ) : (
           <Stack.Screen
             name="Main"
             component={MainTabs}
             options={{ headerShown: false }}
           />
-        {/* )} */}
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

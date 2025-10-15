@@ -29,7 +29,8 @@ export async function createSession(
   name: string,
   date: string,
   note?: string,
-  userId?: string
+  userId?: string,
+  userName?: string
 ): Promise<Session> {
   const supabase = getSupabase();
 
@@ -47,21 +48,44 @@ export async function createSession(
     .single();
 
   if (error) throw error;
-  
+
   const session = mapSupabaseSession(data);
-  
-  // Add creator as admin if userId provided
+
+  // Add creator as admin to session_members if userId provided (for authenticated users)
   if (userId) {
-    await supabase
-      .from('session_members')
-      .insert({
-        user_id: userId,
-        session_id: session.id,
-        role: 'admin',
-        joined_at: new Date().toISOString(),
-      });
+    try {
+      await supabase
+        .from('session_members')
+        .insert({
+          user_id: userId,
+          session_id: session.id,
+          role: 'admin',
+          joined_at: new Date().toISOString(),
+        });
+    } catch (err) {
+      console.error('Error adding creator to session_members:', err);
+      // Continue even if this fails (e.g., for non-UUID user IDs)
+    }
   }
-  
+
+  // Always create a Member entry for the creator (for the participant list)
+  if (userName) {
+    try {
+      await supabase
+        .from('members')
+        .insert({
+          session_id: session.id,
+          user_id: userId || null, // Link to user if available
+          name: userName,
+          created_at: new Date().toISOString(),
+        });
+    } catch (err) {
+      console.error('Error adding creator to members:', err);
+      // If member creation fails, throw error as this is critical
+      throw err;
+    }
+  }
+
   return session;
 }
 
