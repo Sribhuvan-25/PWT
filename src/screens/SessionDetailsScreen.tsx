@@ -43,7 +43,7 @@ export default function SessionDetailsScreen() {
   const { sessionId } = route.params;
 
   const { user } = useAuthStore();
-  const { sessions } = useSessions();
+  const { sessions, refresh: refreshSessions } = useSessions();
   const { members } = useMembers(sessionId);
   const { buyIns, addBuyIn } = useBuyIns(sessionId);
 
@@ -82,6 +82,39 @@ export default function SessionDetailsScreen() {
     }
 
     setMemberData(data);
+  };
+
+  const validateTotals = (): { valid: boolean; totalBuyIns: number; totalCashouts: number } => {
+    const totalBuyIns = memberData.reduce((sum, d) => sum + d.totalBuyIns, 0);
+    const totalCashouts = memberData.reduce((sum, d) => sum + d.cashout, 0);
+    const hasCashouts = memberData.some(d => d.cashout > 0);
+
+    return {
+      valid: !hasCashouts || totalBuyIns === totalCashouts,
+      totalBuyIns,
+      totalCashouts,
+    };
+  };
+
+  const canEditMember = (memberId: string): boolean => {
+    // Cannot edit if session is completed
+    if (session?.status === 'completed') {
+      return false;
+    }
+
+    // Find the member object to check userId
+    const member = members.find(m => m.id === memberId);
+    if (!member || !user) {
+      return false;
+    }
+
+    // If member has a userId, only that user can edit
+    if (member.userId) {
+      return member.userId === user.id;
+    }
+
+    // If no userId is set on the member, anyone can edit (for backward compatibility)
+    return true;
   };
 
   const handleAddBuyIn = async () => {
@@ -155,6 +188,22 @@ export default function SessionDetailsScreen() {
   };
 
   const handleCompleteSession = () => {
+    // Validate totals before completing
+    const validation = validateTotals();
+    if (!validation.valid) {
+      const difference = validation.totalBuyIns - validation.totalCashouts;
+      Alert.alert(
+        'Validation Error',
+        `Total buy-ins and cashouts do not match!\n\n` +
+        `Total Buy-ins: ${formatCents(validation.totalBuyIns)}\n` +
+        `Total Cashouts: ${formatCents(validation.totalCashouts)}\n` +
+        `Difference: ${formatCents(Math.abs(difference))}\n\n` +
+        `Please verify all cashout amounts before completing the session.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     // Calculate settlements
     const balances = memberData.map((data) => ({
       memberId: data.memberId,
@@ -171,9 +220,11 @@ export default function SessionDetailsScreen() {
     try {
       setActionLoading(true);
       await SessionsRepo.updateSessionStatus(sessionId, 'completed');
+      await refreshSessions(); // Refresh to get updated session status
       setSettlementDialogVisible(false);
       Alert.alert('Success', 'Session marked as completed!');
     } catch (error) {
+      console.error('Error completing session:', error);
       Alert.alert('Error', 'Failed to complete session');
     } finally {
       setActionLoading(false);
@@ -221,50 +272,57 @@ export default function SessionDetailsScreen() {
                 <DataTable.Title numeric>Net</DataTable.Title>
               </DataTable.Header>
 
-              {memberData.map((data) => (
-                <DataTable.Row key={data.memberId}>
-                  <DataTable.Cell>{data.memberName}</DataTable.Cell>
-                  <DataTable.Cell numeric>
-                    <Button
-                      mode="text"
-                      compact
-                      onPress={() => openAddBuyInDialog(data.memberId)}
-                      textColor={darkColors.accent}
+              {memberData.map((data) => {
+                const canEdit = canEditMember(data.memberId);
+                return (
+                  <DataTable.Row key={data.memberId}>
+                    <DataTable.Cell>{data.memberName}</DataTable.Cell>
+                    <DataTable.Cell numeric>
+                      <Button
+                        mode="text"
+                        compact
+                        onPress={() => openAddBuyInDialog(data.memberId)}
+                        textColor={canEdit ? darkColors.accent : darkColors.textMuted}
+                        disabled={!canEdit}
+                      >
+                        {formatCents(data.totalBuyIns)}
+                      </Button>
+                    </DataTable.Cell>
+                    <DataTable.Cell numeric>
+                      <Button
+                        mode="text"
+                        compact
+                        onPress={() => openCashoutDialog(data.memberId, data.cashout)}
+                        textColor={canEdit ? darkColors.accent : darkColors.textMuted}
+                        disabled={!canEdit}
+                      >
+                        {formatCents(data.cashout)}
+                      </Button>
+                    </DataTable.Cell>
+                    <DataTable.Cell
+                      numeric
+                      textStyle={{
+                        color:
+                          data.netResult > 0
+                            ? darkColors.positive
+                            : data.netResult < 0
+                            ? darkColors.negative
+                            : darkColors.textMuted,
+                        fontWeight: '700',
+                      }}
                     >
-                      {formatCents(data.totalBuyIns)}
-                    </Button>
-                  </DataTable.Cell>
-                  <DataTable.Cell numeric>
-                    <Button
-                      mode="text"
-                      compact
-                      onPress={() => openCashoutDialog(data.memberId, data.cashout)}
-                      textColor={darkColors.accent}
-                    >
-                      {formatCents(data.cashout)}
-                    </Button>
-                  </DataTable.Cell>
-                  <DataTable.Cell
-                    numeric
-                    textStyle={{
-                      color:
-                        data.netResult > 0
-                          ? darkColors.positive
-                          : data.netResult < 0
-                          ? darkColors.negative
-                          : darkColors.textMuted,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {formatCents(data.netResult)}
-                  </DataTable.Cell>
-                </DataTable.Row>
-              ))}
+                      {formatCents(data.netResult)}
+                    </DataTable.Cell>
+                  </DataTable.Row>
+                );
+              })}
             </DataTable>
           )}
 
           <Text style={styles.hint}>
-            Tap on Buy-ins or Cashout to update values
+            {session?.status === 'completed'
+              ? 'Session is completed. No edits allowed.'
+              : 'Tap on Buy-ins or Cashout to update values (only your own row)'}
           </Text>
         </View>
 

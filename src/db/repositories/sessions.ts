@@ -138,11 +138,18 @@ export async function updateSession(
 
 export async function deleteSession(id: string): Promise<void> {
   const supabase = getSupabase();
-  
+
   const { error } = await supabase
     .from('sessions')
     .delete()
     .eq('id', id);
 
   if (error) throw error;
+}
+
+export async function updateSessionStatus(
+  id: string,
+  status: 'active' | 'completed'
+): Promise<void> {
+  return updateSession(id, { status });
 }

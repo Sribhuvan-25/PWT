@@ -36,32 +36,43 @@ export function usePlayerStats() {
       setError(null);
 
       const supabase = getSupabase();
-      
-      // Get all sessions with results across all groups the user is a member of
+
+      // Get all sessions the user is a member of with their results
+      const { data: sessionMembersData, error: membersError } = await supabase
+        .from('session_members')
+        .select('session_id')
+        .eq('user_id', user.id);
+
+      if (membersError) throw membersError;
+
+      const sessionIds = (sessionMembersData || []).map(sm => sm.session_id);
+
+      if (sessionIds.length === 0) {
+        setStats({ totalNetCents: 0, sessionHistory: [] });
+        setLoading(false);
+        return;
+      }
+
+      // Get sessions with results
       const { data, error: queryError } = await supabase
         .from('results')
         .select(`
           net_cents,
           sessions!inner(
             id,
+            name,
             date,
-            note,
-            groups!inner(
-              name,
-              group_members!inner(user_id)
-            )
-          ),
-          members!inner(name)
+            note
+          )
         `)
-        .eq('sessions.groups.group_members.user_id', user.id)
-        .eq('members.name', user.displayName || user.name || user.email)
+        .in('session_id', sessionIds)
         .order('sessions(date)', { ascending: false });
 
       if (queryError) throw queryError;
 
       const sessionHistory: SessionHistory[] = (data || []).map((row: any) => ({
         sessionId: row.sessions.id,
-        groupName: row.sessions.groups.name,
+        groupName: row.sessions.name,
         date: row.sessions.date,
         note: row.sessions.note,
         netCents: row.net_cents || 0,
