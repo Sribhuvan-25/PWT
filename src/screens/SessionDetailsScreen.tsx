@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Modal, TouchableWithoutFeedback } from 'react-native';
 import {
   Text,
   Card,
@@ -413,68 +413,70 @@ export default function SessionDetailsScreen() {
       </Portal>
 
       {/* Settlement Dialog */}
-      <Portal>
-        <Dialog
-          visible={settlementDialogVisible}
-          onDismiss={() => setSettlementDialogVisible(false)}
-          style={styles.settlementDialog}
-        >
-          <Dialog.Title style={styles.settlementDialogTitle}>Complete Session</Dialog.Title>
-          <Dialog.Content style={styles.settlementDialogContent}>
-            {settlements.length === 0 ? (
-              <View style={styles.settlementEmptyContainer}>
-                <Text style={styles.settlementText}>All players are even!</Text>
-              </View>
-            ) : (
-              <View>
-                <Text style={styles.settlementSectionTitle}>Settlement Summary</Text>
-                <ScrollView
-                  style={styles.settlementScrollView}
-                  contentContainerStyle={styles.settlementScrollContent}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {settlements.map((settlement, index) => (
-                    <View key={index} style={styles.settlementItem}>
-                      <View style={styles.settlementRow}>
-                        <Text style={styles.settlementFrom}>{settlement.fromMemberName}</Text>
-                        <Text style={styles.settlementArrow}>→</Text>
-                        <Text style={styles.settlementTo}>{settlement.toMemberName}</Text>
-                      </View>
-                      <Text style={styles.settlementAmount}>
-                        {formatCents(settlement.amountCents)}
-                      </Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
+      <Modal
+        visible={settlementDialogVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSettlementDialogVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSettlementDialogVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.settlementContainer}>
+                <Text style={styles.settlementDialogTitle}>Complete Session</Text>
 
-            <View style={styles.settlementFooter}>
-              <Text style={styles.settlementNote}>
-                Players can still view details but no new transactions can be added.
-              </Text>
-            </View>
-          </Dialog.Content>
-          <Dialog.Actions style={styles.settlementActions}>
-            <Button
-              onPress={() => setSettlementDialogVisible(false)}
-              disabled={actionLoading}
-              textColor={darkColors.textMuted}
-            >
-              Cancel
-            </Button>
-            <Button
-              onPress={confirmCompleteSession}
-              loading={actionLoading}
-              disabled={actionLoading}
-              mode="contained"
-              buttonColor={darkColors.positive}
-            >
-              Mark as Completed
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+                {settlements.length === 0 ? (
+                  <Text style={styles.settlementText}>All players are even!</Text>
+                ) : (
+                  <ScrollView
+                    style={styles.settlementScrollView}
+                    contentContainerStyle={styles.settlementScrollContent}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {settlements.map((settlement, index) => (
+                      <View key={index} style={styles.settlementItem}>
+                        <View style={styles.settlementRow}>
+                          <Text style={styles.settlementFrom}>{settlement.fromMemberName}</Text>
+                          <Text style={styles.settlementArrow}>→</Text>
+                          <Text style={styles.settlementTo}>{settlement.toMemberName}</Text>
+                        </View>
+                        <Text style={styles.settlementAmount}>
+                          {formatCents(settlement.amountCents)}
+                        </Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                )}
+
+                <Text style={styles.settlementNote}>
+                  Players can still view details but no new transactions can be added.
+                </Text>
+
+                <View style={styles.settlementButtonContainer}>
+                  <Button
+                    onPress={() => setSettlementDialogVisible(false)}
+                    disabled={actionLoading}
+                    textColor={darkColors.textMuted}
+                    style={styles.settlementCancelButton}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onPress={confirmCompleteSession}
+                    loading={actionLoading}
+                    disabled={actionLoading}
+                    mode="contained"
+                    buttonColor={darkColors.positive}
+                    style={styles.settlementConfirmButton}
+                  >
+                    Mark as Completed
+                  </Button>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 }
@@ -580,94 +582,92 @@ const styles = StyleSheet.create({
   completeButtonContent: {
     paddingVertical: spacing.sm,
   },
-  settlementDialog: {
-    maxHeight: '75%',
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  settlementContainer: {
+    backgroundColor: darkColors.card,
+    borderRadius: 16,
+    padding: spacing.lg,
+    width: '90%',
+    maxHeight: '70%',
   },
   settlementDialogTitle: {
     fontSize: 20,
-    fontWeight: '700',
-  },
-  settlementDialogContent: {
-    paddingHorizontal: 0,
-    paddingTop: 0,
-  },
-  settlementEmptyContainer: {
-    paddingVertical: spacing.xl * 2,
-    alignItems: 'center',
-  },
-  settlementSectionTitle: {
-    fontSize: 15,
     fontWeight: '600',
     color: darkColors.textPrimary,
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
   },
   settlementScrollView: {
-    maxHeight: 250,
+    maxHeight: 200,
+    marginBottom: spacing.lg,
   },
   settlementScrollContent: {
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
   },
   settlementText: {
     fontSize: 18,
     fontWeight: '600',
     color: darkColors.positive,
     textAlign: 'center',
+    marginVertical: spacing.xl,
   },
   settlementItem: {
-    backgroundColor: darkColors.card,
-    borderRadius: 12,
-    padding: spacing.md,
+    paddingVertical: spacing.md,
     marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: darkColors.border,
   },
   settlementRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   settlementFrom: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '500',
     color: darkColors.textPrimary,
     flex: 1,
   },
   settlementArrow: {
-    fontSize: 20,
+    fontSize: 18,
     color: darkColors.accent,
     marginHorizontal: spacing.md,
-    fontWeight: '700',
   },
   settlementTo: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '500',
     color: darkColors.textPrimary,
     flex: 1,
     textAlign: 'right',
   },
   settlementAmount: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: darkColors.accent,
     textAlign: 'center',
   },
-  settlementFooter: {
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: darkColors.border,
-  },
   settlementNote: {
-    fontSize: 12,
+    fontSize: 13,
     color: darkColors.textMuted,
     textAlign: 'center',
     lineHeight: 18,
+    marginTop: spacing.sm,
   },
-  settlementActions: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+  settlementButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingTop: spacing.sm,
+  },
+  settlementCancelButton: {
+    minWidth: 80,
+  },
+  settlementConfirmButton: {
+    minWidth: 120,
   },
 });
 
