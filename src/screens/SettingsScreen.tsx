@@ -1,13 +1,11 @@
 import React from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
-import { Text, List, Switch, Button } from 'react-native-paper';
-import { useAppStore } from '@/stores/appStore';
+import { Text, List, Button } from 'react-native-paper';
 import { useAuthStore } from '@/stores/authStore';
 import { signOut } from '@/services/auth';
 import { darkColors, spacing } from '@/utils/theme';
 
 export default function SettingsScreen() {
-  const { theme, setTheme } = useAppStore();
   const { user, setUser } = useAuthStore();
 
   const handleSignOut = async () => {
@@ -55,21 +53,6 @@ export default function SettingsScreen() {
             Sign Out
           </Button>
         </View>
-      </List.Section>
-
-      <List.Section>
-        <List.Subheader style={styles.subheader}>Appearance</List.Subheader>
-        <List.Item
-          title="Dark Mode"
-          titleStyle={styles.itemTitle}
-          left={(props) => <List.Icon {...props} icon="theme-light-dark" color={darkColors.textPrimary} />}
-          right={() => (
-            <Switch
-              value={theme === 'dark'}
-              onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
-            />
-          )}
-        />
       </List.Section>
 
       <View style={styles.footer}>
