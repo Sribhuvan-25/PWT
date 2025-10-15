@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   DataTable,
 } from 'react-native-paper';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSessions } from '@/hooks/useSessions';
 import { useMembers } from '@/hooks/useMembers';
 import { useBuyIns } from '@/hooks/useBuyIns';
@@ -40,6 +40,7 @@ interface MemberSessionData {
 
 export default function SessionDetailsScreen() {
   const route = useRoute<SessionDetailsRouteProp>();
+  const navigation = useNavigation();
   const { sessionId } = route.params;
 
   const { user } = useAuthStore();
@@ -219,9 +220,19 @@ export default function SessionDetailsScreen() {
   const confirmCompleteSession = async () => {
     try {
       setActionLoading(true);
+      console.log('🔄 Updating session status to completed...');
       await SessionsRepo.updateSessionStatus(sessionId, 'completed');
-      await refreshSessions(); // Refresh to get updated session status
+      console.log('✅ Session status updated');
+
+      // Force immediate refresh of sessions list
+      console.log('🔄 Refreshing sessions list...');
+      refreshSessions();
+      console.log('✅ Sessions refresh triggered');
+
       setSettlementDialogVisible(false);
+
+      // Navigate back to sessions list to see the updated status
+      navigation.goBack();
       Alert.alert('Success', 'Session marked as completed!');
     } catch (error) {
       console.error('Error completing session:', error);
@@ -408,20 +419,22 @@ export default function SessionDetailsScreen() {
           onDismiss={() => setSettlementDialogVisible(false)}
           style={styles.settlementDialog}
         >
-          <Dialog.Title>Complete Session</Dialog.Title>
-          <Dialog.ScrollArea>
-            <ScrollView>
-              <Text style={styles.settlementTitle}>Settlement Summary</Text>
-              <Text style={styles.settlementSubtitle}>
-                These transactions will settle all debts:
-              </Text>
-
-              {settlements.length === 0 ? (
+          <Dialog.Title style={styles.settlementDialogTitle}>Complete Session</Dialog.Title>
+          <Dialog.Content style={styles.settlementDialogContent}>
+            {settlements.length === 0 ? (
+              <View style={styles.settlementEmptyContainer}>
                 <Text style={styles.settlementText}>All players are even!</Text>
-              ) : (
-                settlements.map((settlement, index) => (
-                  <Card key={index} style={styles.settlementCard}>
-                    <Card.Content>
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.settlementSectionTitle}>Settlement Summary</Text>
+                <ScrollView
+                  style={styles.settlementScrollView}
+                  contentContainerStyle={styles.settlementScrollContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {settlements.map((settlement, index) => (
+                    <View key={index} style={styles.settlementItem}>
                       <View style={styles.settlementRow}>
                         <Text style={styles.settlementFrom}>{settlement.fromMemberName}</Text>
                         <Text style={styles.settlementArrow}>→</Text>
@@ -430,18 +443,24 @@ export default function SessionDetailsScreen() {
                       <Text style={styles.settlementAmount}>
                         {formatCents(settlement.amountCents)}
                       </Text>
-                    </Card.Content>
-                  </Card>
-                ))
-              )}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
+            <View style={styles.settlementFooter}>
               <Text style={styles.settlementNote}>
-                Mark this session as completed? Players can still view the details but no new transactions can be added.
+                Players can still view details but no new transactions can be added.
               </Text>
-            </ScrollView>
-          </Dialog.ScrollArea>
-          <Dialog.Actions>
-            <Button onPress={() => setSettlementDialogVisible(false)} disabled={actionLoading}>
+            </View>
+          </Dialog.Content>
+          <Dialog.Actions style={styles.settlementActions}>
+            <Button
+              onPress={() => setSettlementDialogVisible(false)}
+              disabled={actionLoading}
+              textColor={darkColors.textMuted}
+            >
               Cancel
             </Button>
             <Button
@@ -449,6 +468,7 @@ export default function SessionDetailsScreen() {
               loading={actionLoading}
               disabled={actionLoading}
               mode="contained"
+              buttonColor={darkColors.positive}
             >
               Mark as Completed
             </Button>
@@ -561,33 +581,51 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   settlementDialog: {
-    maxHeight: '80%',
+    maxHeight: '75%',
   },
-  settlementTitle: {
-    fontSize: 18,
+  settlementDialogTitle: {
+    fontSize: 20,
     fontWeight: '700',
-    color: darkColors.textPrimary,
-    marginBottom: spacing.sm,
   },
-  settlementSubtitle: {
-    fontSize: 14,
-    color: darkColors.textMuted,
-    marginBottom: spacing.lg,
+  settlementDialogContent: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
+  settlementEmptyContainer: {
+    paddingVertical: spacing.xl * 2,
+    alignItems: 'center',
+  },
+  settlementSectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: darkColors.textPrimary,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  settlementScrollView: {
+    maxHeight: 250,
+  },
+  settlementScrollContent: {
+    paddingHorizontal: spacing.lg,
   },
   settlementText: {
-    fontSize: 16,
-    color: darkColors.textPrimary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: darkColors.positive,
     textAlign: 'center',
-    marginVertical: spacing.lg,
   },
-  settlementCard: {
+  settlementItem: {
     backgroundColor: darkColors.card,
-    marginBottom: spacing.md,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: darkColors.border,
   },
   settlementRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   settlementFrom: {
     fontSize: 14,
@@ -596,9 +634,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settlementArrow: {
-    fontSize: 18,
+    fontSize: 20,
     color: darkColors.accent,
-    marginHorizontal: spacing.sm,
+    marginHorizontal: spacing.md,
+    fontWeight: '700',
   },
   settlementTo: {
     fontSize: 14,
@@ -608,17 +647,27 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   settlementAmount: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
     color: darkColors.accent,
     textAlign: 'center',
   },
+  settlementFooter: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: darkColors.border,
+  },
   settlementNote: {
     fontSize: 12,
     color: darkColors.textMuted,
-    fontStyle: 'italic',
-    marginTop: spacing.lg,
     textAlign: 'center',
+    lineHeight: 18,
+  },
+  settlementActions: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
 });
 

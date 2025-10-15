@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, FlatList, Alert, Animated } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Text, Card, FAB, Button, TextInput, Portal, Dialog, IconButton } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSessions } from '@/hooks/useSessions';
 import { useAppStore } from '@/stores/appStore';
@@ -124,12 +124,22 @@ function SwipeableSessionCard({ session, isSelected, onPress, onDelete }: Swipea
 
 export default function SessionsScreen() {
   const navigation = useNavigation<SessionsNavigationProp>();
+  const isFocused = useIsFocused();
   const { sessions, loading, createSession, joinSession, deleteSession, refresh } = useSessions();
   const { selectedSessionId, setSelectedSession } = useAppStore();
+
   const [createDialogVisible, setCreateDialogVisible] = useState(false);
   const [joinDialogVisible, setJoinDialogVisible] = useState(false);
   const [sessionName, setSessionName] = useState('');
   const [joinCode, setJoinCode] = useState('');
+
+  // Refresh sessions when screen comes into focus
+  useEffect(() => {
+    if (isFocused) {
+      console.log('📍 SessionsScreen focused - refreshing sessions');
+      refresh();
+    }
+  }, [isFocused]);
 
   const handleCreateSession = async () => {
     if (!sessionName.trim()) return;
@@ -178,7 +188,7 @@ export default function SessionsScreen() {
   const handleDeleteSession = (sessionId: string, sessionName: string) => {
     Alert.alert(
       'Delete Session',
-      `Are you sure you want to delete "${sessionName}"?\n\nThis will hide the session from your list, but your financial data will be preserved for stats.`,
+      `Are you sure you want to delete "${sessionName}"?\n\nThis will hide the session from your list, but all your financial data will be preserved for stats calculations.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -187,7 +197,7 @@ export default function SessionsScreen() {
           onPress: async () => {
             try {
               await deleteSession(sessionId);
-              Alert.alert('Success', 'Session deleted successfully');
+              Alert.alert('Success', 'Session hidden. Your data is still available for stats.');
             } catch (error) {
               Alert.alert('Error', 'Failed to delete session');
             }

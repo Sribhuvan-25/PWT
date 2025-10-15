@@ -7,6 +7,7 @@ export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { user } = useAuthStore();
 
   // Helper function to check if a string is a valid UUID
@@ -20,11 +21,17 @@ export function useSessions() {
       setLoading(true);
       setError(null);
       
+      console.log('🔄 Loading sessions for user:', user?.id);
+      // Clear existing sessions first to ensure fresh data
+      setSessions([]);
+      
       // If user is authenticated with a valid UUID, only load their sessions
       // Otherwise, load all sessions (for testing with non-UUID user IDs)
       const data = user?.id && isValidUUID(user.id)
         ? await SessionsRepo.getUserSessions(user.id)
         : await SessionsRepo.getAllSessions();
+      
+      console.log('📊 Loaded sessions:', data.map(s => ({ id: s.id, name: s.name, status: s.status, date: s.date })));
       setSessions(data);
     } catch (err) {
       console.error('Error loading sessions:', err);
@@ -36,7 +43,7 @@ export function useSessions() {
 
   useEffect(() => {
     loadSessions();
-  }, [user?.id]);
+  }, [user?.id, refreshTrigger]);
 
   const createSession = async (name: string, date: string, note?: string): Promise<Session> => {
     // Only pass user ID if it's a valid UUID
@@ -115,11 +122,16 @@ export function useSessions() {
     await loadSessions();
   };
 
+  const refresh = () => {
+    console.log('🔄 Force refreshing sessions...');
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   return {
     sessions,
     loading,
     error,
-    refresh: loadSessions,
+    refresh,
     createSession,
     joinSession,
     deleteSession,

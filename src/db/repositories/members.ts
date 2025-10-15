@@ -71,11 +71,30 @@ export async function updateMember(id: string, name: string): Promise<void> {
 
 export async function deleteMember(id: string): Promise<void> {
   const supabase = getSupabase();
-  
+
   const { error } = await supabase
     .from('members')
     .delete()
     .eq('id', id);
 
   if (error) throw error;
+}
+
+// Update all member entries for a specific user across all sessions
+export async function updateMemberNameByUserId(userId: string, newName: string): Promise<void> {
+  const supabase = getSupabase();
+
+  console.log('🔄 Updating all member entries for user:', userId, 'to name:', newName);
+
+  const { error } = await supabase
+    .from('members')
+    .update({ name: newName })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('❌ Error updating member names:', error);
+    throw error;
+  }
+
+  console.log('✅ Successfully updated member names for user');
 }
