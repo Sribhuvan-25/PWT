@@ -2,6 +2,7 @@ import { getSupabase } from '../db/supabase';
 import { User } from '../types';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -123,10 +124,21 @@ export async function getCurrentUser(): Promise<User | null> {
 
   if (!session?.user) return null;
 
+  // Load saved display name from AsyncStorage
+  let displayName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0];
+  try {
+    const savedDisplayName = await AsyncStorage.getItem('user_display_name');
+    if (savedDisplayName) {
+      displayName = savedDisplayName;
+    }
+  } catch (error) {
+    console.error('Failed to load display name:', error);
+  }
+
   return {
     id: session.user.id,
     email: session.user.email!,
-    displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+    displayName,
     photoUrl: session.user.user_metadata?.avatar_url,
     createdAt: session.user.created_at,
   };
@@ -138,10 +150,21 @@ export function onAuthStateChange(callback: (user: User | null) => void) {
   const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (_event, session) => {
       if (session?.user) {
+        // Load saved display name from AsyncStorage
+        let displayName = session.user.user_metadata?.full_name || session.user.email?.split('@')[0];
+        try {
+          const savedDisplayName = await AsyncStorage.getItem('user_display_name');
+          if (savedDisplayName) {
+            displayName = savedDisplayName;
+          }
+        } catch (error) {
+          console.error('Failed to load display name:', error);
+        }
+
         const user: User = {
           id: session.user.id,
           email: session.user.email!,
-          displayName: session.user.user_metadata?.full_name || session.user.email?.split('@')[0],
+          displayName,
           photoUrl: session.user.user_metadata?.avatar_url,
           createdAt: session.user.created_at,
         };

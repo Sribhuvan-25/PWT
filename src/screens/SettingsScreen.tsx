@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
-import { Text, List, Button } from 'react-native-paper';
+import { Text, List, Button, TextInput, Portal, Dialog } from 'react-native-paper';
 import { useAuthStore } from '@/stores/authStore';
 import { signOut } from '@/services/auth';
 import { darkColors, spacing } from '@/utils/theme';
 
 export default function SettingsScreen() {
-  const { user, setUser } = useAuthStore();
+  const { user, setUser, updateDisplayName } = useAuthStore();
+  const [displayNameDialogVisible, setDisplayNameDialogVisible] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.displayName || '');
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -32,16 +34,39 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleUpdateDisplayName = async () => {
+    if (!displayName.trim()) {
+      Alert.alert('Error', 'Display name cannot be empty');
+      return;
+    }
+
+    try {
+      await updateDisplayName(displayName.trim());
+      setDisplayNameDialogVisible(false);
+      Alert.alert('Success', 'Display name updated successfully!');
+    } catch (error) {
+      console.error('Error updating display name:', error);
+      Alert.alert('Error', 'Failed to update display name');
+    }
+  };
+
+  const openDisplayNameDialog = () => {
+    setDisplayName(user?.displayName || '');
+    setDisplayNameDialogVisible(true);
+  };
+
   return (
     <View style={styles.container}>
       <List.Section>
         <List.Subheader style={styles.subheader}>Account</List.Subheader>
         <List.Item
-          title={user?.name || user?.displayName || 'User'}
+          title={user?.displayName || 'User'}
           titleStyle={styles.itemTitle}
           description={user?.email}
           descriptionStyle={styles.itemDescription}
           left={(props) => <List.Icon {...props} icon="account" color={darkColors.textPrimary} />}
+          right={(props) => <List.Icon {...props} icon="pencil" color={darkColors.textMuted} />}
+          onPress={openDisplayNameDialog}
         />
         <View style={styles.signOutContainer}>
           <Button
@@ -59,6 +84,34 @@ export default function SettingsScreen() {
         <Text style={styles.footerText}>PWT v1.0.0</Text>
         <Text style={styles.footerSubtext}>Data stored securely in the cloud</Text>
       </View>
+
+      <Portal>
+        <Dialog visible={displayNameDialogVisible} onDismiss={() => setDisplayNameDialogVisible(false)}>
+          <Dialog.Title>Edit Display Name</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              label="Display Name"
+              value={displayName}
+              onChangeText={setDisplayName}
+              mode="outlined"
+              style={styles.textInput}
+              placeholder="Enter your display name"
+              maxLength={50}
+            />
+            <Text style={styles.helpText}>
+              This is the name other players will see in sessions.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setDisplayNameDialogVisible(false)}>
+              Cancel
+            </Button>
+            <Button onPress={handleUpdateDisplayName} mode="contained">
+              Save
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </View>
   );
 }
@@ -99,5 +152,13 @@ const styles = StyleSheet.create({
   footerSubtext: {
     color: darkColors.textMuted,
     fontSize: 12,
+  },
+  textInput: {
+    marginBottom: spacing.md,
+  },
+  helpText: {
+    color: darkColors.textMuted,
+    fontSize: 12,
+    fontStyle: 'italic',
   },
 });
