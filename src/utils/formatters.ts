@@ -1,5 +1,18 @@
 
 export function formatDate(dateString: string): string {
+  // Handle YYYY-MM-DD format properly to avoid timezone issues
+  if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    // Parse as local date to avoid UTC interpretation
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+  
+  // Fallback for other date formats
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
@@ -9,6 +22,19 @@ export function formatDate(dateString: string): string {
 }
 
 export function formatDateShort(dateString: string): string {
+  // Handle YYYY-MM-DD format properly to avoid timezone issues
+  if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    // Parse as local date to avoid UTC interpretation
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
+    return date.toLocaleDateString('en-US', {
+      year: '2-digit',
+      month: 'numeric',
+      day: 'numeric',
+    });
+  }
+  
+  // Fallback for other date formats
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {
     year: '2-digit',
@@ -18,7 +44,16 @@ export function formatDateShort(dateString: string): string {
 }
 
 export function getRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
+  // Handle YYYY-MM-DD format properly to avoid timezone issues
+  let date: Date;
+  if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    // Parse as local date to avoid UTC interpretation
+    const [year, month, day] = dateString.split('-').map(Number);
+    date = new Date(year, month - 1, day); // month is 0-indexed
+  } else {
+    date = new Date(dateString);
+  }
+  
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);

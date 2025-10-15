@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, FlatList, Alert } from 'react-native';
-import { Text, Card, FAB, Button, TextInput, Portal, Dialog } from 'react-native-paper';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, FlatList, Alert, Animated } from 'react-native';
+import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import { Text, Card, FAB, Button, TextInput, Portal, Dialog, IconButton } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSessions } from '@/hooks/useSessions';
@@ -15,9 +16,115 @@ type RootStackParamList = {
 
 type SessionsNavigationProp = StackNavigationProp<RootStackParamList>;
 
+interface SwipeableSessionCardProps {
+  session: any;
+  isSelected: boolean;
+  onPress: () => void;
+  onDelete: () => void;
+}
+
+function SwipeableSessionCard({ session, isSelected, onPress, onDelete }: SwipeableSessionCardProps) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const lastGestureX = useRef(0);
+
+  const onGestureEvent = Animated.event(
+    [{ nativeEvent: { translationX: translateX } }],
+    { useNativeDriver: true }
+  );
+
+  const onHandlerStateChange = (event: any) => {
+    if (event.nativeEvent.oldState === State.ACTIVE) {
+      const { translationX, velocityX } = event.nativeEvent;
+      lastGestureX.current = translationX;
+
+      // If swiped left enough or with enough velocity, show delete
+      if (translationX < -80 || velocityX < -500) {
+        Animated.spring(translateX, {
+          toValue: -120,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }).start();
+      } else {
+        // Snap back to original position
+        Animated.spring(translateX, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }).start();
+      }
+    }
+  };
+
+  const resetPosition = () => {
+    Animated.spring(translateX, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  };
+
+  return (
+    <View style={styles.swipeContainer}>
+      {/* Delete background */}
+      <View style={styles.deleteBackground}>
+        <IconButton
+          icon="delete"
+          iconColor="white"
+          size={24}
+          onPress={() => {
+            resetPosition();
+            onDelete();
+          }}
+        />
+      </View>
+      
+      {/* Main card */}
+      <PanGestureHandler
+        onGestureEvent={onGestureEvent}
+        onHandlerStateChange={onHandlerStateChange}
+        activeOffsetX={[-10, 10]}
+        failOffsetY={[-5, 5]}
+      >
+        <Animated.View
+          style={[
+            styles.swipeableCard,
+            { transform: [{ translateX }] }
+          ]}
+        >
+          <Card
+            style={[
+              styles.card,
+              isSelected && styles.selectedCard,
+            ]}
+            onPress={() => {
+              resetPosition();
+              onPress();
+            }}
+          >
+            <Card.Content>
+              <View style={styles.sessionInfo}>
+                <Text style={styles.sessionName}>{session.name}</Text>
+                <Text style={styles.joinCode}>Join code: {session.joinCode}</Text>
+                <Text style={styles.date}>{formatDate(session.date)}</Text>
+                {session.note && <Text style={styles.note}>{session.note}</Text>}
+                <Text style={[styles.status, session.status === 'completed' && styles.statusCompleted]}>
+                  {session.status === 'completed' ? 'Completed' : 'Active'}
+                </Text>
+              </View>
+            </Card.Content>
+          </Card>
+        </Animated.View>
+      </PanGestureHandler>
+    </View>
+  );
+}
+
 export default function SessionsScreen() {
   const navigation = useNavigation<SessionsNavigationProp>();
-  const { sessions, loading, createSession, joinSession, refresh } = useSessions();
+  const { sessions, loading, createSession, joinSession, deleteSession, refresh } = useSessions();
   const { selectedSessionId, setSelectedSession } = useAppStore();
   const [createDialogVisible, setCreateDialogVisible] = useState(false);
   const [joinDialogVisible, setJoinDialogVisible] = useState(false);
@@ -59,13 +166,35 @@ export default function SessionsScreen() {
       navigation.navigate('SessionDetails', { sessionId: session.id });
     } catch (error) {
       console.error('Join session error:', error);
-      Alert.alert('Error', 'Failed to join session');
+      Alert.alert('Join Session Error', error instanceof Error ? error.message : 'Invalid code');
     }
   };
 
   const handleSessionPress = (sessionId: string) => {
     setSelectedSession(sessionId);
     navigation.navigate('SessionDetails', { sessionId });
+  };
+
+  const handleDeleteSession = (sessionId: string, sessionName: string) => {
+    Alert.alert(
+      'Delete Session',
+      `Are you sure you want to delete "${sessionName}"?\n\nThis will hide the session from your list, but your financial data will be preserved for stats.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteSession(sessionId);
+              Alert.alert('Success', 'Session deleted successfully');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete session');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -85,25 +214,12 @@ export default function SessionsScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
-            <Card
-              style={[
-                styles.card,
-                item.id === selectedSessionId && styles.selectedCard,
-              ]}
+            <SwipeableSessionCard
+              session={item}
+              isSelected={item.id === selectedSessionId}
               onPress={() => handleSessionPress(item.id)}
-            >
-              <Card.Content>
-                <View style={styles.sessionInfo}>
-                  <Text style={styles.sessionName}>{item.name}</Text>
-                  <Text style={styles.joinCode}>Join code: {item.joinCode}</Text>
-                  <Text style={styles.date}>{formatDate(item.date)}</Text>
-                  {item.note && <Text style={styles.note}>{item.note}</Text>}
-                  <Text style={[styles.status, item.status === 'completed' && styles.statusCompleted]}>
-                    {item.status === 'completed' ? 'Completed' : 'Active'}
-                  </Text>
-                </View>
-              </Card.Content>
-            </Card>
+              onDelete={() => handleDeleteSession(item.id, item.name)}
+            />
           )}
         />
       )}
@@ -193,9 +309,27 @@ const styles = StyleSheet.create({
   list: {
     padding: spacing.lg,
   },
-  card: {
+  swipeContainer: {
+    position: 'relative',
     marginBottom: spacing.md,
+  },
+  deleteBackground: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 120,
+    backgroundColor: darkColors.negative,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  swipeableCard: {
+    backgroundColor: 'transparent',
+  },
+  card: {
     backgroundColor: darkColors.card,
+    borderRadius: 8,
   },
   selectedCard: {
     borderColor: darkColors.accent,

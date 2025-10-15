@@ -6,6 +6,7 @@ function mapSupabaseMember(row: any): Member {
   return {
     id: row.id,
     sessionId: row.session_id,
+    userId: row.user_id,
     name: row.name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

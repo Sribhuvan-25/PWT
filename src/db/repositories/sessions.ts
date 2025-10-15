@@ -12,6 +12,7 @@ function mapSupabaseSession(row: any): Session {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
   };
 }
 
@@ -95,6 +96,7 @@ export async function getAllSessions(): Promise<Session[]> {
   const { data, error } = await supabase
     .from('sessions')
     .select('*')
+    .is('deleted_at', null) // Only get non-deleted sessions
     .order('date', { ascending: false });
 
   if (error) throw error;
@@ -103,15 +105,24 @@ export async function getAllSessions(): Promise<Session[]> {
 
 export async function getSessionByJoinCode(joinCode: string): Promise<Session | null> {
   const supabase = getSupabase();
-  
+
+  console.log('🔍 Looking up join code:', joinCode, 'uppercase:', joinCode.toUpperCase());
+
   const { data, error } = await supabase
     .from('sessions')
     .select('*')
     .eq('join_code', joinCode.toUpperCase())
+    .is('deleted_at', null) // Only get non-deleted sessions
     .single();
 
+  console.log('Join code lookup result:', { found: !!data, error: error?.message });
+
   if (error) {
-    if (error.code === 'PGRST116') return null; // Not found
+    if (error.code === 'PGRST116') {
+      console.log('❌ Join code not found in database');
+      return null; // Not found
+    }
+    console.error('Join code lookup error:', error);
     throw error;
   }
   return data ? mapSupabaseSession(data) : null;
@@ -124,10 +135,20 @@ export async function getUserSessions(userId: string): Promise<Session[]> {
     .from('sessions')
     .select('*, session_members!inner(user_id)')
     .eq('session_members.user_id', userId)
+    .is('deleted_at', null) // Only get non-deleted sessions
     .order('date', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(mapSupabaseSession);
+  
+  // Deduplicate sessions by ID to handle multiple session_members entries
+  const sessionMap = new Map<string, any>();
+  (data || []).forEach((row: any) => {
+    if (!sessionMap.has(row.id)) {
+      sessionMap.set(row.id, row);
+    }
+  });
+  
+  return Array.from(sessionMap.values()).map(mapSupabaseSession);
 }
 
 export async function getSessionById(id: string): Promise<Session | null> {
@@ -163,9 +184,10 @@ export async function updateSession(
 export async function deleteSession(id: string): Promise<void> {
   const supabase = getSupabase();
 
+  // Soft delete: set deleted_at timestamp instead of hard delete
   const { error } = await supabase
     .from('sessions')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', id);
 
   if (error) throw error;
@@ -176,4 +198,27 @@ export async function updateSessionStatus(
   status: 'active' | 'completed'
 ): Promise<void> {
   return updateSession(id, { status });
+}
+
+// Get sessions for stats calculations (includes soft-deleted sessions)
+export async function getSessionsForStats(userId: string): Promise<Session[]> {
+  const supabase = getSupabase();
+  
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('*, session_members!inner(user_id)')
+    .eq('session_members.user_id', userId)
+    .order('date', { ascending: false });
+
+  if (error) throw error;
+  
+  // Deduplicate sessions by ID to handle multiple session_members entries
+  const sessionMap = new Map<string, any>();
+  (data || []).forEach((row: any) => {
+    if (!sessionMap.has(row.id)) {
+      sessionMap.set(row.id, row);
+    }
+  });
+  
+  return Array.from(sessionMap.values()).map(mapSupabaseSession);
 }

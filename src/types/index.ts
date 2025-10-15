@@ -18,6 +18,7 @@ export interface Session {
   status?: 'active' | 'completed';
   createdAt: string;
   updatedAt?: string;
+  deletedAt?: string;
   pendingSync?: number;
 }
 

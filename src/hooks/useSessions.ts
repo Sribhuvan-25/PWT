@@ -40,7 +40,7 @@ export function useSessions() {
 
   const createSession = async (name: string, date: string, note?: string): Promise<Session> => {
     // Only pass user ID if it's a valid UUID
-    const userId = user?.id && isValidUUID(user.id) ? user.id : user?.id;
+    const userId = user?.id && isValidUUID(user.id) ? user.id : undefined;
     const userName = user?.displayName || user?.name || user?.email?.split('@')[0] || 'Unknown User';
     const session = await SessionsRepo.createSession(name, date, note, userId, userName);
     await loadSessions();
@@ -67,27 +67,42 @@ export function useSessions() {
             role: 'member',
             joined_at: new Date().toISOString(),
           });
-      } catch (err) {
-        console.error('Error adding user to session_members:', err);
+      } catch (err: any) {
+        // Ignore duplicate key errors (user already in session_members)
+        if (err.code !== '23505') {  // PostgreSQL unique violation
+          console.error('Error adding user to session_members:', err);
+        }
         // Continue even if this fails
       }
     }
 
     // Always create a Member entry (for the participant list)
-    if (user?.id) {
+    if (user?.id && isValidUUID(user.id)) {
       const userName = user?.displayName || user?.name || user?.email?.split('@')[0] || 'Unknown User';
-      try {
-        await supabase
-          .from('members')
-          .insert({
-            session_id: session.id,
-            user_id: user.id,
-            name: userName,
-            created_at: new Date().toISOString(),
-          });
-      } catch (err) {
-        console.error('Error adding user to members:', err);
-        throw err; // This is critical, so throw
+      
+      // Check if user already has a member record for this session
+      const { data: existingMember } = await supabase
+        .from('members')
+        .select('id')
+        .eq('session_id', session.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!existingMember) {
+        // Only insert if not already a member
+        try {
+          await supabase
+            .from('members')
+            .insert({
+              session_id: session.id,
+              user_id: user.id,
+              name: userName,
+              created_at: new Date().toISOString(),
+            });
+        } catch (err) {
+          console.error('Error adding user to members:', err);
+          throw err; // This is critical, so throw
+        }
       }
     }
 

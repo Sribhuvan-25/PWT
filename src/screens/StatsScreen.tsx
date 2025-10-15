@@ -52,7 +52,7 @@ export default function StatsScreen() {
       ) : (
         <FlatList
           data={stats.sessionHistory}
-          keyExtractor={(item) => item.sessionId}
+          keyExtractor={(item) => `${item.sessionId}-${item.date}`}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl

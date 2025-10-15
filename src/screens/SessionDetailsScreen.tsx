@@ -18,7 +18,7 @@ import { useBuyIns } from '@/hooks/useBuyIns';
 import { useAuthStore } from '@/stores/authStore';
 import { darkColors, spacing } from '@/utils/theme';
 import { formatDate } from '@/utils/formatters';
-import { formatCents } from '@/utils/settleUp';
+import { formatCents, formatCentsWithSign } from '@/utils/settleUp';
 import * as ResultsRepo from '@/db/repositories/results';
 import * as BuyInsRepo from '@/db/repositories/buyins';
 import * as SessionsRepo from '@/db/repositories/sessions';
@@ -311,7 +311,7 @@ export default function SessionDetailsScreen() {
                         fontWeight: '700',
                       }}
                     >
-                      {formatCents(data.netResult)}
+                      {formatCentsWithSign(data.netResult)}
                     </DataTable.Cell>
                   </DataTable.Row>
                 );

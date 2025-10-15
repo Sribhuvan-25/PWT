@@ -37,7 +37,7 @@ export function usePlayerStats() {
 
       const supabase = getSupabase();
 
-      // Get all sessions the user is a member of with their results
+      // Get all sessions the user is a member of with their results (including soft-deleted)
       const { data: sessionMembersData, error: membersError } = await supabase
         .from('session_members')
         .select('session_id')
@@ -53,30 +53,39 @@ export function usePlayerStats() {
         return;
       }
 
-      // Get sessions with results
+      // Get the current user's results only (not all members in the session)
       const { data, error: queryError } = await supabase
         .from('results')
         .select(`
+          session_id,
           net_cents,
+          member_id,
           sessions!inner(
             id,
             name,
             date,
             note
+          ),
+          members!inner(
+            user_id
           )
         `)
         .in('session_id', sessionIds)
+        .eq('members.user_id', user.id) // Only get results for the current user
         .order('sessions(date)', { ascending: false });
 
       if (queryError) throw queryError;
 
-      const sessionHistory: SessionHistory[] = (data || []).map((row: any) => ({
-        sessionId: row.sessions.id,
-        groupName: row.sessions.name,
-        date: row.sessions.date,
-        note: row.sessions.note,
-        netCents: row.net_cents || 0,
-      }));
+      // Create session history with user's individual results
+      const sessionHistory: SessionHistory[] = (data || [])
+        .map((row: any) => ({
+          sessionId: row.sessions.id,
+          groupName: row.sessions.name,
+          date: row.sessions.date,
+          note: row.sessions.note,
+          netCents: row.net_cents || 0,
+        }))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       // Calculate total net
       const totalNetCents = sessionHistory.reduce(
