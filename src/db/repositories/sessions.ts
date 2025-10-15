@@ -229,3 +229,22 @@ export async function getSessionsForStats(userId: string): Promise<Session[]> {
 
   return Array.from(sessionMap.values()).map(mapSupabaseSession);
 }
+
+// Check if a user is an admin of a session
+export async function isSessionAdmin(sessionId: string, userId: string): Promise<boolean> {
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from('session_members')
+    .select('role')
+    .eq('session_id', sessionId)
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return false; // Not found
+    throw error;
+  }
+
+  return data?.role === 'admin';
+}

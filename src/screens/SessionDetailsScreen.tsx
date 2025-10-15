@@ -57,12 +57,32 @@ export default function SessionDetailsScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const [memberData, setMemberData] = useState<MemberSessionData[]>([]);
   const [settlements, setSettlements] = useState<Array<{ fromMemberName: string; toMemberName: string; amountCents: number }>>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const session = sessions.find((s) => s.id === sessionId);
 
   useEffect(() => {
     loadMemberData();
   }, [buyIns, members, sessionId]);
+
+  useEffect(() => {
+    checkAdminStatus();
+  }, [sessionId, user]);
+
+  const checkAdminStatus = async () => {
+    if (!user?.id) {
+      setIsAdmin(false);
+      return;
+    }
+
+    try {
+      const adminStatus = await SessionsRepo.isSessionAdmin(sessionId, user.id);
+      setIsAdmin(adminStatus);
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+      setIsAdmin(false);
+    }
+  };
 
   const loadMemberData = async () => {
     const data: MemberSessionData[] = [];
@@ -337,8 +357,8 @@ export default function SessionDetailsScreen() {
           </Text>
         </View>
 
-        {/* Complete Session Button */}
-        {session.status !== 'completed' && memberData.length > 0 && (
+        {/* Complete Session Button - Only for admins */}
+        {session.status !== 'completed' && memberData.length > 0 && isAdmin && (
           <View style={styles.section}>
             <Button
               mode="contained"

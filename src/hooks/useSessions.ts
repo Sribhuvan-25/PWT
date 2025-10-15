@@ -84,33 +84,47 @@ export function useSessions() {
     }
 
     // Always create a Member entry (for the participant list)
-    if (user?.id && isValidUUID(user.id)) {
-      const userName = user?.displayName || user?.name || user?.email?.split('@')[0] || 'Unknown User';
-      
-      // Check if user already has a member record for this session
-      const { data: existingMember } = await supabase
-        .from('members')
-        .select('id')
-        .eq('session_id', session.id)
-        .eq('user_id', user.id)
-        .single();
+    console.log('👤 Current user object:', {
+      id: user?.id,
+      email: user?.email,
+      displayName: user?.displayName,
+      name: user?.name
+    });
 
-      if (!existingMember) {
-        // Only insert if not already a member
-        try {
-          await supabase
-            .from('members')
-            .insert({
-              session_id: session.id,
-              user_id: user.id,
-              name: userName,
-              created_at: new Date().toISOString(),
-            });
-        } catch (err) {
-          console.error('Error adding user to members:', err);
-          throw err; // This is critical, so throw
-        }
+    const userName = user?.displayName || user?.name || user?.email?.split('@')[0] || 'Unknown User';
+    const userId = user?.id && isValidUUID(user.id) ? user.id : null;
+
+    console.log('🔍 Checking for existing member:', { sessionId: session.id, userId, userName });
+
+    // Check if user already has a member record for this session
+    const { data: existingMember } = await supabase
+      .from('members')
+      .select('id')
+      .eq('session_id', session.id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    console.log('🔍 Existing member check:', existingMember ? 'Found' : 'Not found');
+
+    if (!existingMember) {
+      // Only insert if not already a member
+      try {
+        console.log('➕ Adding user to members table:', { sessionId: session.id, userId, userName });
+        await supabase
+          .from('members')
+          .insert({
+            session_id: session.id,
+            user_id: userId,
+            name: userName,
+            created_at: new Date().toISOString(),
+          });
+        console.log('✅ Successfully added user to members');
+      } catch (err) {
+        console.error('❌ Error adding user to members:', err);
+        throw err; // This is critical, so throw
       }
+    } else {
+      console.log('ℹ️ User already exists in members table');
     }
 
     await loadSessions();
