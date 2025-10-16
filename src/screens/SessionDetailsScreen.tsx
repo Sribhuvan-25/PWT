@@ -58,12 +58,16 @@ export default function SessionDetailsScreen() {
   const [memberData, setMemberData] = useState<MemberSessionData[]>([]);
   const [settlements, setSettlements] = useState<Array<{ fromMemberName: string; toMemberName: string; amountCents: number }>>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pendingBuyIns, setPendingBuyIns] = useState<Array<any>>([]);
 
   const session = sessions.find((s) => s.id === sessionId);
 
   useEffect(() => {
     loadMemberData();
-  }, [buyIns, members, sessionId]);
+    if (isAdmin) {
+      loadPendingBuyIns();
+    }
+  }, [buyIns, members, sessionId, isAdmin]);
 
   useEffect(() => {
     checkAdminStatus();
@@ -103,6 +107,63 @@ export default function SessionDetailsScreen() {
     }
 
     setMemberData(data);
+  };
+
+  const loadPendingBuyIns = async () => {
+    try {
+      const pending = await BuyInsRepo.getPendingBuyIns(sessionId);
+      const pendingWithNames = pending.map(buyIn => {
+        const member = members.find(m => m.id === buyIn.memberId);
+        return {
+          ...buyIn,
+          memberName: member?.name || 'Unknown',
+        };
+      });
+      setPendingBuyIns(pendingWithNames);
+    } catch (error) {
+      console.error('Error loading pending buy-ins:', error);
+    }
+  };
+
+  const handleApproveBuyIn = async (buyInId: string) => {
+    if (!user?.id) return;
+
+    try {
+      setActionLoading(true);
+      await BuyInsRepo.approveBuyIn(buyInId, user.id);
+      await loadPendingBuyIns();
+      await loadMemberData();
+      Alert.alert('Success', 'Buy-in approved!');
+    } catch (error) {
+      console.error('Error approving buy-in:', error);
+      Alert.alert('Error', 'Failed to approve buy-in');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRejectBuyIn = async (buyInId: string) => {
+    Alert.alert(
+      'Reject Buy-in',
+      'Are you sure you want to reject this buy-in?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await BuyInsRepo.deleteBuyIn(buyInId);
+              await loadPendingBuyIns();
+              Alert.alert('Success', 'Buy-in rejected');
+            } catch (error) {
+              console.error('Error rejecting buy-in:', error);
+              Alert.alert('Error', 'Failed to reject buy-in');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const validateTotals = (): { valid: boolean; totalBuyIns: number; totalCashouts: number } => {
@@ -287,6 +348,52 @@ export default function SessionDetailsScreen() {
         </View>
 
         <Divider style={styles.divider} />
+
+        {/* Pending Buy-ins Section - Only for Admins */}
+        {isAdmin && pendingBuyIns.length > 0 && session.status !== 'completed' && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Pending Buy-ins ({pendingBuyIns.length})</Text>
+              <Text style={styles.pendingHint}>Review and approve buy-ins below</Text>
+              {pendingBuyIns.map((buyIn) => (
+                <Card key={buyIn.id} style={styles.pendingCard}>
+                  <Card.Content>
+                    <View style={styles.pendingBuyInRow}>
+                      <View style={styles.pendingBuyInInfo}>
+                        <Text style={styles.pendingMemberName}>{buyIn.memberName}</Text>
+                        <Text style={styles.pendingAmount}>{formatCents(buyIn.amountCents)}</Text>
+                        <Text style={styles.pendingTimestamp}>{formatDate(buyIn.createdAt)}</Text>
+                      </View>
+                      <View style={styles.pendingActions}>
+                        <Button
+                          mode="contained"
+                          onPress={() => handleApproveBuyIn(buyIn.id)}
+                          disabled={actionLoading}
+                          buttonColor={darkColors.positive}
+                          compact
+                          style={styles.approveButton}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          mode="outlined"
+                          onPress={() => handleRejectBuyIn(buyIn.id)}
+                          disabled={actionLoading}
+                          textColor={darkColors.error}
+                          compact
+                          style={styles.rejectButton}
+                        >
+                          Reject
+                        </Button>
+                      </View>
+                    </View>
+                  </Card.Content>
+                </Card>
+              ))}
+            </View>
+            <Divider style={styles.divider} />
+          </>
+        )}
 
         {/* Member Data Table */}
         <View style={styles.section}>
@@ -688,6 +795,54 @@ const styles = StyleSheet.create({
   },
   settlementConfirmButton: {
     minWidth: 120,
+  },
+  pendingCard: {
+    backgroundColor: darkColors.card,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: darkColors.warning,
+  },
+  pendingBuyInRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  pendingBuyInInfo: {
+    flex: 1,
+  },
+  pendingMemberName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: darkColors.textPrimary,
+    marginBottom: 4,
+  },
+  pendingAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: darkColors.accent,
+    marginBottom: 4,
+  },
+  pendingTimestamp: {
+    fontSize: 12,
+    color: darkColors.textMuted,
+  },
+  pendingActions: {
+    flexDirection: 'column',
+    gap: spacing.xs,
+    marginLeft: spacing.md,
+  },
+  approveButton: {
+    minWidth: 90,
+  },
+  rejectButton: {
+    minWidth: 90,
+    borderColor: darkColors.error,
+  },
+  pendingHint: {
+    fontSize: 13,
+    color: darkColors.textMuted,
+    marginBottom: spacing.md,
+    fontStyle: 'italic',
   },
 });
 

@@ -47,6 +47,9 @@ export interface BuyIn {
   sessionId: string;
   memberId: string;
   amountCents: number;
+  approved: boolean;
+  approvedBy?: string;
+  approvedAt?: string;
   createdAt: string;
   pendingSync?: number;
 }
@@ -69,6 +72,15 @@ export interface Settlement {
   createdAt: string;
   updatedAt?: string;
   pendingSync?: number;
+}
+
+export interface ManualAdjustment {
+  id: string;
+  userId: string;
+  amountCents: number;
+  note?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 // Computed Types

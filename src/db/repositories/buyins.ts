@@ -8,6 +8,9 @@ function mapSupabaseBuyIn(row: any): BuyIn {
     sessionId: row.session_id,
     memberId: row.member_id,
     amountCents: row.amount_cents,
+    approved: row.approved ?? false,
+    approvedBy: row.approved_by,
+    approvedAt: row.approved_at,
     createdAt: row.created_at,
   };
 }
@@ -51,38 +54,72 @@ export async function getTotalBuyInsByMember(
   memberId: string
 ): Promise<number> {
   const supabase = getSupabase();
-  
-  const { data, error } = await supabase
+
+  const { data, error} = await supabase
     .from('buy_ins')
     .select('amount_cents')
     .eq('session_id', sessionId)
-    .eq('member_id', memberId);
+    .eq('member_id', memberId)
+    .eq('approved', true); // Only count approved buy-ins
 
   if (error) throw error;
-  
+
   return (data || []).reduce((sum, row) => sum + (row.amount_cents || 0), 0);
 }
 
 export async function getTotalBuyInsBySession(sessionId: string): Promise<number> {
   const supabase = getSupabase();
-  
+
   const { data, error } = await supabase
     .from('buy_ins')
     .select('amount_cents')
-    .eq('session_id', sessionId);
+    .eq('session_id', sessionId)
+    .eq('approved', true); // Only count approved buy-ins
 
   if (error) throw error;
-  
+
   return (data || []).reduce((sum, row) => sum + (row.amount_cents || 0), 0);
 }
 
 export async function deleteBuyIn(id: string): Promise<void> {
   const supabase = getSupabase();
-  
+
   const { error } = await supabase
     .from('buy_ins')
     .delete()
     .eq('id', id);
 
   if (error) throw error;
+}
+
+export async function approveBuyIn(id: string, userId: string): Promise<BuyIn> {
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from('buy_ins')
+    .update({
+      approved: true,
+      approved_by: userId,
+      approved_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return mapSupabaseBuyIn(data);
+}
+
+export async function getPendingBuyIns(sessionId: string): Promise<BuyIn[]> {
+  const supabase = getSupabase();
+
+  const { data, error } = await supabase
+    .from('buy_ins')
+    .select('*')
+    .eq('session_id', sessionId)
+    .eq('approved', false)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapSupabaseBuyIn);
 }

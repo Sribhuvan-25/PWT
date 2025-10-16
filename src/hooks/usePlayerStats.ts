@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getSupabase } from '@/db/supabase';
 import { useAuthStore } from '@/stores/authStore';
+import * as ManualAdjustmentsRepo from '@/db/repositories/manualAdjustments';
+import { ManualAdjustment } from '@/types';
 
 export interface SessionHistory {
   sessionId: string;
@@ -13,6 +15,8 @@ export interface SessionHistory {
 export interface PlayerStats {
   totalNetCents: number;
   sessionHistory: SessionHistory[];
+  totalAdjustmentsCents: number;
+  adjustments: ManualAdjustment[];
 }
 
 export function usePlayerStats() {
@@ -20,13 +24,15 @@ export function usePlayerStats() {
   const [stats, setStats] = useState<PlayerStats>({
     totalNetCents: 0,
     sessionHistory: [],
+    totalAdjustmentsCents: 0,
+    adjustments: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadStats = async () => {
     if (!user) {
-      setStats({ totalNetCents: 0, sessionHistory: [] });
+      setStats({ totalNetCents: 0, sessionHistory: [], totalAdjustmentsCents: 0, adjustments: [] });
       setLoading(false);
       return;
     }
@@ -47,8 +53,17 @@ export function usePlayerStats() {
 
       const sessionIds = (sessionMembersData || []).map(sm => sm.session_id);
 
+      // Load manual adjustments
+      const adjustments = await ManualAdjustmentsRepo.getUserAdjustments(user.id);
+      const totalAdjustmentsCents = adjustments.reduce((sum, adj) => sum + adj.amountCents, 0);
+
       if (sessionIds.length === 0) {
-        setStats({ totalNetCents: 0, sessionHistory: [] });
+        setStats({
+          totalNetCents: totalAdjustmentsCents,
+          sessionHistory: [],
+          totalAdjustmentsCents,
+          adjustments,
+        });
         setLoading(false);
         return;
       }
@@ -87,15 +102,20 @@ export function usePlayerStats() {
         }))
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-      // Calculate total net
-      const totalNetCents = sessionHistory.reduce(
+      // Calculate total net from sessions
+      const sessionsTotalCents = sessionHistory.reduce(
         (sum, session) => sum + session.netCents,
         0
       );
 
+      // Add manual adjustments to total
+      const totalNetCents = sessionsTotalCents + totalAdjustmentsCents;
+
       setStats({
         totalNetCents,
         sessionHistory,
+        totalAdjustmentsCents,
+        adjustments,
       });
     } catch (err) {
       console.error('Error loading player stats:', err);

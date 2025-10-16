@@ -1,18 +1,72 @@
-import React from 'react';
-import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { Text, Card } from 'react-native-paper';
+import React, { useState } from 'react';
+import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity, Modal, TextInput as RNTextInput } from 'react-native';
+import { Text, Card, Button, TextInput, IconButton } from 'react-native-paper';
 import { usePlayerStats } from '@/hooks/usePlayerStats';
 import { darkColors, spacing } from '@/utils/theme';
 import { formatDate } from '@/utils/formatters';
-import { formatCentsWithSign, formatCents } from '@/utils/settleUp';
+import { formatCentsWithSign, formatCents, parseDollarsInput } from '@/utils/settleUp';
+import * as ManualAdjustmentsRepo from '@/db/repositories/manualAdjustments';
+import { useAuthStore } from '@/stores/authStore';
 
 export default function StatsScreen() {
   const { stats, loading, refresh } = usePlayerStats();
+  const { user } = useAuthStore();
+  const [adjustmentModalVisible, setAdjustmentModalVisible] = useState(false);
+  const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  const [adjustmentNote, setAdjustmentNote] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   const getResultColor = (netCents: number) => {
     if (netCents > 0) return darkColors.positive;
     if (netCents < 0) return darkColors.negative;
     return darkColors.textMuted;
+  };
+
+  const handleAddAdjustment = async () => {
+    if (!user) return;
+
+    const amountCents = parseDollarsInput(adjustmentAmount);
+    if (isNaN(amountCents) || amountCents === 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await ManualAdjustmentsRepo.createAdjustment(user.id, amountCents, adjustmentNote || undefined);
+      setAdjustmentModalVisible(false);
+      setAdjustmentAmount('');
+      setAdjustmentNote('');
+      await refresh();
+    } catch (error) {
+      console.error('Error adding adjustment:', error);
+      Alert.alert('Error', 'Failed to add adjustment');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteAdjustment = (id: string, amount: number) => {
+    Alert.alert(
+      'Delete Adjustment',
+      `Remove ${formatCentsWithSign(amount)} adjustment?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await ManualAdjustmentsRepo.deleteAdjustment(id);
+              await refresh();
+            } catch (error) {
+              console.error('Error deleting adjustment:', error);
+              Alert.alert('Error', 'Failed to delete adjustment');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -31,6 +85,52 @@ export default function StatsScreen() {
         <Text style={styles.headerSubtext}>
           {stats.totalNetCents >= 0 ? 'Net Profit' : 'Net Loss'}
         </Text>
+      </View>
+
+      {/* Manual Adjustments Section */}
+      {stats.adjustments.length > 0 && (
+        <>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Manual Adjustments</Text>
+              <Text style={[styles.adjustmentTotal, { color: getResultColor(stats.totalAdjustmentsCents) }]}>
+                {formatCentsWithSign(stats.totalAdjustmentsCents)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.adjustmentsList}>
+            {stats.adjustments.map((adj) => (
+              <View key={adj.id} style={styles.adjustmentItem}>
+                <View style={styles.adjustmentInfo}>
+                  {adj.note && <Text style={styles.adjustmentNote}>{adj.note}</Text>}
+                  <Text style={styles.adjustmentDate}>{formatDate(adj.createdAt)}</Text>
+                </View>
+                <View style={styles.adjustmentRight}>
+                  <Text style={[styles.adjustmentAmount, { color: getResultColor(adj.amountCents) }]}>
+                    {formatCentsWithSign(adj.amountCents)}
+                  </Text>
+                  <IconButton
+                    icon="delete-outline"
+                    size={20}
+                    iconColor={darkColors.error}
+                    onPress={() => handleDeleteAdjustment(adj.id, adj.amountCents)}
+                  />
+                </View>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
+      <View style={styles.section}>
+        <Button
+          mode="outlined"
+          onPress={() => setAdjustmentModalVisible(true)}
+          style={styles.addAdjustmentButton}
+          icon="plus"
+        >
+          Add Manual Adjustment
+        </Button>
       </View>
 
       {/* Session History */}
@@ -100,6 +200,75 @@ export default function StatsScreen() {
           )}
         />
       )}
+
+      {/* Add Adjustment Modal */}
+      <Modal
+        visible={adjustmentModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAdjustmentModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setAdjustmentModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Add Manual Adjustment</Text>
+              <Text style={styles.modalDescription}>
+                Add or subtract from your total P/L. Use negative amounts for losses.
+              </Text>
+
+              <TextInput
+                label="Amount (e.g., -50 or 100)"
+                value={adjustmentAmount}
+                onChangeText={setAdjustmentAmount}
+                keyboardType="numeric"
+                mode="outlined"
+                style={styles.input}
+                placeholder="0.00"
+                outlineColor={darkColors.border}
+                activeOutlineColor={darkColors.accent}
+                textColor={darkColors.textPrimary}
+              />
+
+              <TextInput
+                label="Note (optional)"
+                value={adjustmentNote}
+                onChangeText={setAdjustmentNote}
+                mode="outlined"
+                style={styles.input}
+                placeholder="Reason for adjustment"
+                outlineColor={darkColors.border}
+                activeOutlineColor={darkColors.accent}
+                textColor={darkColors.textPrimary}
+              />
+
+              <View style={styles.modalButtons}>
+                <Button
+                  onPress={() => setAdjustmentModalVisible(false)}
+                  disabled={actionLoading}
+                  textColor={darkColors.textMuted}
+                  style={styles.modalButton}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onPress={handleAddAdjustment}
+                  loading={actionLoading}
+                  disabled={actionLoading || !adjustmentAmount}
+                  mode="contained"
+                  buttonColor={darkColors.accent}
+                  style={styles.modalButton}
+                >
+                  Add
+                </Button>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -204,6 +373,90 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  adjustmentTotal: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  adjustmentsList: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  adjustmentItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: darkColors.border,
+  },
+  adjustmentInfo: {
+    flex: 1,
+  },
+  adjustmentNote: {
+    fontSize: 14,
+    color: darkColors.textPrimary,
+    marginBottom: 4,
+  },
+  adjustmentDate: {
+    fontSize: 12,
+    color: darkColors.textMuted,
+  },
+  adjustmentRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.md,
+  },
+  adjustmentAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginRight: spacing.xs,
+  },
+  addAdjustmentButton: {
+    borderColor: darkColors.accent,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: darkColors.card,
+    borderRadius: 16,
+    padding: spacing.xl,
+    width: 340,
+    maxWidth: '100%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: darkColors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: darkColors.textMuted,
+    marginBottom: spacing.lg,
+  },
+  input: {
+    marginBottom: spacing.md,
+    backgroundColor: darkColors.background,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
+  modalButton: {
+    minWidth: 80,
   },
 });
 
