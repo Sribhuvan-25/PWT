@@ -59,11 +59,13 @@ export default function SessionDetailsScreen() {
   const [settlements, setSettlements] = useState<Array<{ fromMemberName: string; toMemberName: string; amountCents: number }>>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingBuyIns, setPendingBuyIns] = useState<Array<any>>([]);
+  const [buyInHistory, setBuyInHistory] = useState<Array<any>>([]);
 
   const session = sessions.find((s) => s.id === sessionId);
 
   useEffect(() => {
     loadMemberData();
+    loadBuyInHistory();
     if (isAdmin) {
       loadPendingBuyIns();
     }
@@ -122,6 +124,28 @@ export default function SessionDetailsScreen() {
       setPendingBuyIns(pendingWithNames);
     } catch (error) {
       console.error('Error loading pending buy-ins:', error);
+    }
+  };
+
+  const loadBuyInHistory = () => {
+    try {
+      // Map all buy-ins with member names and approver names
+      const historyWithNames = buyIns.map(buyIn => {
+        const member = members.find(m => m.id === buyIn.memberId);
+        const approver = buyIn.approvedBy ? members.find(m => m.userId === buyIn.approvedBy) : null;
+        return {
+          ...buyIn,
+          memberName: member?.name || 'Unknown',
+          approverName: approver?.name || (buyIn.approvedBy ? 'Unknown' : null),
+        };
+      });
+      // Sort by creation date, newest first
+      const sorted = historyWithNames.sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      setBuyInHistory(sorted);
+    } catch (error) {
+      console.error('Error loading buy-in history:', error);
     }
   };
 
@@ -482,6 +506,53 @@ export default function SessionDetailsScreen() {
               : 'Tap on Buy-ins or Cashout to update values (only your own row)'}
           </Text>
         </View>
+
+        {/* Buy-In History Section */}
+        {buyInHistory.length > 0 && (
+          <>
+            <Divider style={styles.divider} />
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Buy-In History ({buyInHistory.length})</Text>
+              {buyInHistory.map((buyIn) => (
+                <Card key={buyIn.id} style={[
+                  styles.historyCard,
+                  !buyIn.approved && styles.historyCardPending
+                ]}>
+                  <Card.Content>
+                    <View style={styles.historyRow}>
+                      <View style={styles.historyInfo}>
+                        <View style={styles.historyHeader}>
+                          <Text style={styles.historyMemberName}>{buyIn.memberName}</Text>
+                          <View style={[
+                            styles.statusBadge,
+                            buyIn.approved ? styles.statusApproved : styles.statusPending
+                          ]}>
+                            <Text style={[
+                              styles.statusText,
+                              buyIn.approved ? styles.statusTextApproved : styles.statusTextPending
+                            ]}>
+                              {buyIn.approved ? '✓ Approved' : '⏱ Pending'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.historyTimestamp}>
+                          Added: {formatDate(buyIn.createdAt)}
+                        </Text>
+                        {buyIn.approved && buyIn.approvedAt && (
+                          <Text style={styles.historyApprovalInfo}>
+                            Approved: {formatDate(buyIn.approvedAt)}
+                            {buyIn.approverName && ` by ${buyIn.approverName}`}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={styles.historyAmount}>{formatCents(buyIn.amountCents)}</Text>
+                    </View>
+                  </Card.Content>
+                </Card>
+              ))}
+            </View>
+          </>
+        )}
 
         {/* Complete Session Button - Only for admins */}
         {session.status !== 'completed' && memberData.length > 0 && isAdmin && (
@@ -892,6 +963,73 @@ const styles = StyleSheet.create({
   notificationSubtext: {
     fontSize: 13,
     color: darkColors.textMuted,
+  },
+  historyCard: {
+    backgroundColor: darkColors.card,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: darkColors.positive,
+  },
+  historyCardPending: {
+    borderLeftColor: darkColors.textMuted,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  historyInfo: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  historyMemberName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: darkColors.textPrimary,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusApproved: {
+    backgroundColor: darkColors.positive + '20',
+  },
+  statusPending: {
+    backgroundColor: darkColors.textMuted + '20',
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  statusTextApproved: {
+    color: darkColors.positive,
+  },
+  statusTextPending: {
+    color: darkColors.textMuted,
+  },
+  historyTimestamp: {
+    fontSize: 12,
+    color: darkColors.textMuted,
+    marginBottom: 2,
+  },
+  historyApprovalInfo: {
+    fontSize: 11,
+    color: darkColors.textMuted,
+    fontStyle: 'italic',
+  },
+  historyAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: darkColors.accent,
   },
 });
 
