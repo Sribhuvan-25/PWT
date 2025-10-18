@@ -123,3 +123,40 @@ export async function getPendingBuyIns(sessionId: string): Promise<BuyIn[]> {
   if (error) throw error;
   return (data || []).map(mapSupabaseBuyIn);
 }
+
+export async function getPendingBuyInsCountBySession(userId: string): Promise<Map<string, number>> {
+  const supabase = getSupabase();
+
+  // First, get all sessions where the user is an admin
+  const { data: adminSessions, error: sessionsError } = await supabase
+    .from('session_members')
+    .select('session_id')
+    .eq('user_id', userId)
+    .eq('role', 'admin');
+
+  if (sessionsError) throw sessionsError;
+
+  if (!adminSessions || adminSessions.length === 0) {
+    return new Map();
+  }
+
+  const sessionIds = adminSessions.map(s => s.session_id);
+
+  // Get all pending buy-ins for these sessions
+  const { data: pendingBuyIns, error: buyInsError } = await supabase
+    .from('buy_ins')
+    .select('session_id')
+    .in('session_id', sessionIds)
+    .eq('approved', false);
+
+  if (buyInsError) throw buyInsError;
+
+  // Count pending buy-ins per session
+  const counts = new Map<string, number>();
+  (pendingBuyIns || []).forEach(buyIn => {
+    const count = counts.get(buyIn.session_id) || 0;
+    counts.set(buyIn.session_id, count + 1);
+  });
+
+  return counts;
+}

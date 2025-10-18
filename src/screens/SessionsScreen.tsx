@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, FlatList, Alert, Animated } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import { Text, Card, FAB, Button, TextInput, Portal, Dialog, IconButton } from 'react-native-paper';
+import { Text, Card, FAB, Button, TextInput, Portal, Dialog, IconButton, Badge } from 'react-native-paper';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useSessions } from '@/hooks/useSessions';
 import { useAppStore } from '@/stores/appStore';
+import { useAuthStore } from '@/stores/authStore';
 import { darkColors, spacing } from '@/utils/theme';
 import { formatDate } from '@/utils/formatters';
+import * as BuyInsRepo from '@/db/repositories/buyins';
 
 type RootStackParamList = {
   SessionsList: undefined;
@@ -21,9 +23,10 @@ interface SwipeableSessionCardProps {
   isSelected: boolean;
   onPress: () => void;
   onDelete: () => void;
+  pendingCount?: number;
 }
 
-function SwipeableSessionCard({ session, isSelected, onPress, onDelete }: SwipeableSessionCardProps) {
+function SwipeableSessionCard({ session, isSelected, onPress, onDelete, pendingCount }: SwipeableSessionCardProps) {
   const translateX = useRef(new Animated.Value(0)).current;
   const lastGestureX = useRef(0);
 
@@ -105,14 +108,24 @@ function SwipeableSessionCard({ session, isSelected, onPress, onDelete }: Swipea
             }}
           >
             <Card.Content>
-              <View style={styles.sessionInfo}>
-                <Text style={styles.sessionName}>{session.name}</Text>
-                <Text style={styles.joinCode}>Join code: {session.joinCode}</Text>
-                <Text style={styles.date}>{formatDate(session.date)}</Text>
-                {session.note && <Text style={styles.note}>{session.note}</Text>}
-                <Text style={[styles.status, session.status === 'completed' && styles.statusCompleted]}>
-                  {session.status === 'completed' ? 'Completed' : 'Active'}
-                </Text>
+              <View style={styles.cardHeader}>
+                <View style={styles.sessionInfo}>
+                  <Text style={styles.sessionName}>{session.name}</Text>
+                  <Text style={styles.joinCode}>Join code: {session.joinCode}</Text>
+                  <Text style={styles.date}>{formatDate(session.date)}</Text>
+                  {session.note && <Text style={styles.note}>{session.note}</Text>}
+                  <Text style={[styles.status, session.status === 'completed' && styles.statusCompleted]}>
+                    {session.status === 'completed' ? 'Completed' : 'Active'}
+                  </Text>
+                </View>
+                {pendingCount && pendingCount > 0 && (
+                  <Badge
+                    style={styles.badge}
+                    size={24}
+                  >
+                    {pendingCount}
+                  </Badge>
+                )}
               </View>
             </Card.Content>
           </Card>
@@ -127,17 +140,31 @@ export default function SessionsScreen() {
   const isFocused = useIsFocused();
   const { sessions, loading, createSession, joinSession, deleteSession, refresh } = useSessions();
   const { selectedSessionId, setSelectedSession } = useAppStore();
+  const { user } = useAuthStore();
 
   const [createDialogVisible, setCreateDialogVisible] = useState(false);
   const [joinDialogVisible, setJoinDialogVisible] = useState(false);
   const [sessionName, setSessionName] = useState('');
   const [joinCode, setJoinCode] = useState('');
+  const [pendingCounts, setPendingCounts] = useState<Map<string, number>>(new Map());
+
+  // Load pending buy-in counts
+  const loadPendingCounts = async () => {
+    if (!user?.id) return;
+    try {
+      const counts = await BuyInsRepo.getPendingBuyInsCountBySession(user.id);
+      setPendingCounts(counts);
+    } catch (error) {
+      console.error('Error loading pending counts:', error);
+    }
+  };
 
   // Refresh sessions when screen comes into focus
   useEffect(() => {
     if (isFocused) {
       console.log('📍 SessionsScreen focused - refreshing sessions');
       refresh();
+      loadPendingCounts();
     }
   }, [isFocused]);
 
@@ -229,6 +256,7 @@ export default function SessionsScreen() {
               isSelected={item.id === selectedSessionId}
               onPress={() => handleSessionPress(item.id)}
               onDelete={() => handleDeleteSession(item.id, item.name)}
+              pendingCount={pendingCounts.get(item.id)}
             />
           )}
         />
@@ -345,8 +373,19 @@ const styles = StyleSheet.create({
     borderColor: darkColors.accent,
     borderWidth: 2,
   },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   sessionInfo: {
+    flex: 1,
     gap: 4,
+  },
+  badge: {
+    backgroundColor: darkColors.accent,
+    color: darkColors.textPrimary,
+    marginLeft: spacing.sm,
   },
   sessionName: {
     fontSize: 18,

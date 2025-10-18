@@ -347,6 +347,25 @@ export default function SessionDetailsScreen() {
           </Text>
         </View>
 
+        {/* Notification Banner for Pending Buy-ins */}
+        {isAdmin && pendingBuyIns.length > 0 && session.status !== 'completed' && (
+          <View style={styles.notificationBanner}>
+            <View style={styles.notificationContent}>
+              <View style={styles.notificationIconContainer}>
+                <Text style={styles.notificationIcon}>⚠️</Text>
+              </View>
+              <View style={styles.notificationTextContainer}>
+                <Text style={styles.notificationTitle}>
+                  {pendingBuyIns.length} Pending Buy-in{pendingBuyIns.length > 1 ? 's' : ''}
+                </Text>
+                <Text style={styles.notificationSubtext}>
+                  Review and approve buy-ins below
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         <Divider style={styles.divider} />
 
         {/* Pending Buy-ins Section - Only for Admins */}
@@ -379,7 +398,7 @@ export default function SessionDetailsScreen() {
                           mode="outlined"
                           onPress={() => handleRejectBuyIn(buyIn.id)}
                           disabled={actionLoading}
-                          textColor={darkColors.error}
+                          textColor={darkColors.negative}
                           compact
                           style={styles.rejectButton}
                         >
@@ -836,13 +855,43 @@ const styles = StyleSheet.create({
   },
   rejectButton: {
     minWidth: 90,
-    borderColor: darkColors.error,
+    borderColor: darkColors.negative,
   },
   pendingHint: {
     fontSize: 13,
     color: darkColors.textMuted,
     marginBottom: spacing.md,
     fontStyle: 'italic',
+  },
+  notificationBanner: {
+    backgroundColor: darkColors.warning + '20', // 20% opacity
+    borderLeftWidth: 4,
+    borderLeftColor: darkColors.warning,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  notificationContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  notificationIconContainer: {
+    marginRight: spacing.md,
+  },
+  notificationIcon: {
+    fontSize: 24,
+  },
+  notificationTextContainer: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: darkColors.warning,
+    marginBottom: 2,
+  },
+  notificationSubtext: {
+    fontSize: 13,
+    color: darkColors.textMuted,
   },
 });
 

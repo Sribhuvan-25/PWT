@@ -4,7 +4,7 @@ import { Text, Card, Button, TextInput, IconButton } from 'react-native-paper';
 import { usePlayerStats } from '@/hooks/usePlayerStats';
 import { darkColors, spacing } from '@/utils/theme';
 import { formatDate } from '@/utils/formatters';
-import { formatCentsWithSign, formatCents, parseDollarsInput } from '@/utils/settleUp';
+import { formatCentsWithSign, formatCents, parseDollarsToCents } from '@/utils/settleUp';
 import * as ManualAdjustmentsRepo from '@/db/repositories/manualAdjustments';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -25,7 +25,7 @@ export default function StatsScreen() {
   const handleAddAdjustment = async () => {
     if (!user) return;
 
-    const amountCents = parseDollarsInput(adjustmentAmount);
+    const amountCents = parseDollarsToCents(adjustmentAmount);
     if (isNaN(amountCents) || amountCents === 0) {
       Alert.alert('Invalid Amount', 'Please enter a valid amount');
       return;
@@ -112,7 +112,7 @@ export default function StatsScreen() {
                   <IconButton
                     icon="delete-outline"
                     size={20}
-                    iconColor={darkColors.error}
+                    iconColor={darkColors.negative}
                     onPress={() => handleDeleteAdjustment(adj.id, adj.amountCents)}
                   />
                 </View>
