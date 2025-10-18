@@ -10,6 +10,7 @@ import {
   Divider,
   ActivityIndicator,
   DataTable,
+  Checkbox,
 } from 'react-native-paper';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSessions } from '@/hooks/useSessions';
@@ -60,6 +61,7 @@ export default function SessionDetailsScreen() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingBuyIns, setPendingBuyIns] = useState<Array<any>>([]);
   const [buyInHistory, setBuyInHistory] = useState<Array<any>>([]);
+  const [selectedBuyInIds, setSelectedBuyInIds] = useState<Set<string>>(new Set());
 
   const session = sessions.find((s) => s.id === sessionId);
 
@@ -183,6 +185,92 @@ export default function SessionDetailsScreen() {
             } catch (error) {
               console.error('Error rejecting buy-in:', error);
               Alert.alert('Error', 'Failed to reject buy-in');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const toggleBuyInSelection = (buyInId: string) => {
+    setSelectedBuyInIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(buyInId)) {
+        newSet.delete(buyInId);
+      } else {
+        newSet.add(buyInId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedBuyInIds.size === pendingBuyIns.length) {
+      setSelectedBuyInIds(new Set());
+    } else {
+      setSelectedBuyInIds(new Set(pendingBuyIns.map(b => b.id)));
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedBuyInIds.size === 0 || !user?.id) return;
+
+    Alert.alert(
+      'Approve Selected Buy-ins',
+      `Approve ${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Approve',
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              const approvalPromises = Array.from(selectedBuyInIds).map(id =>
+                BuyInsRepo.approveBuyIn(id, user.id)
+              );
+              await Promise.all(approvalPromises);
+              setSelectedBuyInIds(new Set());
+              await loadPendingBuyIns();
+              await loadMemberData();
+              Alert.alert('Success', `${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''} approved!`);
+            } catch (error) {
+              console.error('Error bulk approving buy-ins:', error);
+              Alert.alert('Error', 'Failed to approve some buy-ins');
+            } finally {
+              setActionLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBulkReject = async () => {
+    if (selectedBuyInIds.size === 0) return;
+
+    Alert.alert(
+      'Reject Selected Buy-ins',
+      `Reject ${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setActionLoading(true);
+              const rejectionPromises = Array.from(selectedBuyInIds).map(id =>
+                BuyInsRepo.deleteBuyIn(id)
+              );
+              await Promise.all(rejectionPromises);
+              setSelectedBuyInIds(new Set());
+              await loadPendingBuyIns();
+              Alert.alert('Success', `${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''} rejected`);
+            } catch (error) {
+              console.error('Error bulk rejecting buy-ins:', error);
+              Alert.alert('Error', 'Failed to reject some buy-ins');
+            } finally {
+              setActionLoading(false);
             }
           },
         },
@@ -396,12 +484,62 @@ export default function SessionDetailsScreen() {
         {isAdmin && pendingBuyIns.length > 0 && session.status !== 'completed' && (
           <>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Pending Buy-ins ({pendingBuyIns.length})</Text>
-              <Text style={styles.pendingHint}>Review and approve buy-ins below</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Pending Buy-ins ({pendingBuyIns.length})</Text>
+                <Button
+                  mode="text"
+                  onPress={toggleSelectAll}
+                  compact
+                  textColor={darkColors.accent}
+                >
+                  {selectedBuyInIds.size === pendingBuyIns.length ? 'Deselect All' : 'Select All'}
+                </Button>
+              </View>
+
+              {selectedBuyInIds.size > 0 && (
+                <View style={styles.bulkActions}>
+                  <Text style={styles.bulkActionsText}>
+                    {selectedBuyInIds.size} selected
+                  </Text>
+                  <View style={styles.bulkActionsButtons}>
+                    <Button
+                      mode="contained"
+                      onPress={handleBulkApprove}
+                      disabled={actionLoading}
+                      buttonColor={darkColors.positive}
+                      compact
+                      icon="check-all"
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      onPress={handleBulkReject}
+                      disabled={actionLoading}
+                      textColor={darkColors.negative}
+                      compact
+                      icon="close-circle-outline"
+                      style={styles.bulkRejectButton}
+                    >
+                      Reject
+                    </Button>
+                  </View>
+                </View>
+              )}
+
+              <Text style={styles.pendingHint}>
+                {selectedBuyInIds.size > 0 ? 'Select buy-ins to approve or reject in bulk' : 'Tap checkboxes to select multiple buy-ins'}
+              </Text>
+
               {pendingBuyIns.map((buyIn) => (
                 <Card key={buyIn.id} style={styles.pendingCard}>
                   <Card.Content>
                     <View style={styles.pendingBuyInRow}>
+                      <Checkbox
+                        status={selectedBuyInIds.has(buyIn.id) ? 'checked' : 'unchecked'}
+                        onPress={() => toggleBuyInSelection(buyIn.id)}
+                        color={darkColors.accent}
+                      />
                       <View style={styles.pendingBuyInInfo}>
                         <Text style={styles.pendingMemberName}>{buyIn.memberName}</Text>
                         <Text style={styles.pendingAmount}>{formatCents(buyIn.amountCents)}</Text>
@@ -511,7 +649,7 @@ export default function SessionDetailsScreen() {
         {buyInHistory.length > 0 && (
           <>
             <Divider style={styles.divider} />
-            <View style={styles.section}>
+            <View style={[styles.section, styles.historySection]}>
               <Text style={styles.sectionTitle}>Buy-In History ({buyInHistory.length})</Text>
               {buyInHistory.map((buyIn) => (
                 <Card key={buyIn.id} style={[
@@ -745,11 +883,19 @@ const styles = StyleSheet.create({
   section: {
     padding: spacing.lg,
   },
+  historySection: {
+    paddingTop: spacing.xl,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: darkColors.textPrimary,
-    marginBottom: spacing.md,
   },
   emptyText: {
     fontSize: 14,
@@ -966,7 +1112,7 @@ const styles = StyleSheet.create({
   },
   historyCard: {
     backgroundColor: darkColors.card,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.lg,
     borderLeftWidth: 3,
     borderLeftColor: darkColors.positive,
   },
@@ -1030,6 +1176,27 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: darkColors.accent,
+  },
+  bulkActions: {
+    backgroundColor: darkColors.surface,
+    borderRadius: 8,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bulkActionsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: darkColors.textPrimary,
+  },
+  bulkActionsButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  bulkRejectButton: {
+    borderColor: darkColors.negative,
   },
 });
 
