@@ -99,7 +99,8 @@ export default function SessionDetailsScreen() {
       const totalBuyIns = await BuyInsRepo.getTotalBuyInsByMember(sessionId, member.id);
       const result = await ResultsRepo.getResultBySessionAndMember(sessionId, member.id);
       const cashout = result?.cashoutCents || 0;
-      const netResult = cashout - totalBuyIns;
+      // Only calculate net result if cashout has been entered (> 0)
+      const netResult = cashout > 0 ? cashout - totalBuyIns : 0;
 
       data.push({
         memberId: member.id,
@@ -622,15 +623,17 @@ export default function SessionDetailsScreen() {
                       numeric
                       textStyle={{
                         color:
-                          data.netResult > 0
+                          data.cashout === 0
+                            ? darkColors.textMuted
+                            : data.netResult > 0
                             ? darkColors.positive
                             : data.netResult < 0
                             ? darkColors.negative
                             : darkColors.textMuted,
-                        fontWeight: '700',
+                        fontWeight: data.cashout === 0 ? '400' : '700',
                       }}
                     >
-                      {formatCentsWithSign(data.netResult)}
+                      {data.cashout === 0 ? '—' : formatCentsWithSign(data.netResult)}
                     </DataTable.Cell>
                   </DataTable.Row>
                 );
@@ -651,6 +654,7 @@ export default function SessionDetailsScreen() {
             <Divider style={styles.divider} />
             <View style={[styles.section, styles.historySection]}>
               <Text style={styles.sectionTitle}>Buy-In History ({buyInHistory.length})</Text>
+              <View style={{ height: 12 }} />
               {buyInHistory.map((buyIn) => (
                 <Card key={buyIn.id} style={[
                   styles.historyCard,
