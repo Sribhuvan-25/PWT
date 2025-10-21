@@ -9,7 +9,7 @@ import * as ManualAdjustmentsRepo from '@/db/repositories/manualAdjustments';
 import { useAuthStore } from '@/stores/authStore';
 
 export default function StatsScreen() {
-  const { stats, loading, refresh } = usePlayerStats();
+  const { stats, loading, refreshing, refresh } = usePlayerStats();
   const { user } = useAuthStore();
   const [adjustmentModalVisible, setAdjustmentModalVisible] = useState(false);
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
@@ -138,7 +138,7 @@ export default function StatsScreen() {
         <Text style={styles.sectionTitle}>Game History</Text>
       </View>
 
-      {loading && stats.sessionHistory.length === 0 ? (
+      {loading ? (
         <View style={styles.centered}>
           <Text style={styles.emptyText}>Loading stats...</Text>
         </View>
@@ -156,7 +156,7 @@ export default function StatsScreen() {
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
-              refreshing={loading}
+              refreshing={refreshing}
               onRefresh={refresh}
               tintColor={darkColors.accent}
             />

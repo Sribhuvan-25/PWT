@@ -138,7 +138,7 @@ function SwipeableSessionCard({ session, isSelected, onPress, onDelete, pendingC
 export default function SessionsScreen() {
   const navigation = useNavigation<SessionsNavigationProp>();
   const isFocused = useIsFocused();
-  const { sessions, loading, createSession, joinSession, deleteSession, refresh } = useSessions();
+  const { sessions, loading, refreshing, createSession, joinSession, deleteSession, refresh } = useSessions();
   const { selectedSessionId, setSelectedSession } = useAppStore();
   const { user } = useAuthStore();
 
@@ -159,11 +159,10 @@ export default function SessionsScreen() {
     }
   };
 
-  // Refresh sessions when screen comes into focus
+  // Load pending counts when screen comes into focus (but don't refresh sessions)
   useEffect(() => {
     if (isFocused) {
-      console.log('📍 SessionsScreen focused - refreshing sessions');
-      refresh();
+      console.log('📍 SessionsScreen focused');
       loadPendingCounts();
     }
   }, [isFocused]);
@@ -236,7 +235,7 @@ export default function SessionsScreen() {
 
   return (
     <View style={styles.container}>
-      {loading && sessions.length === 0 ? (
+      {loading ? (
         <View style={styles.centered}>
           <Text style={styles.emptyText}>Loading sessions...</Text>
         </View>
@@ -250,6 +249,8 @@ export default function SessionsScreen() {
           data={sessions}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
+          refreshing={refreshing}
+          onRefresh={refresh}
           renderItem={({ item }) => (
             <SwipeableSessionCard
               session={item}

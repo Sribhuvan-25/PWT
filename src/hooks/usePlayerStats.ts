@@ -28,17 +28,25 @@ export function usePlayerStats() {
     adjustments: [],
   });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  const loadStats = async () => {
+  const loadStats = async (isRefresh = false) => {
     if (!user) {
       setStats({ totalNetCents: 0, sessionHistory: [], totalAdjustmentsCents: 0, adjustments: [] });
       setLoading(false);
+      setHasLoadedOnce(true);
       return;
     }
 
     try {
-      setLoading(true);
+      // Only set loading on initial load, use refreshing for subsequent loads
+      if (!hasLoadedOnce) {
+        setLoading(true);
+      } else if (isRefresh) {
+        setRefreshing(true);
+      }
       setError(null);
 
       const supabase = getSupabase();
@@ -117,11 +125,13 @@ export function usePlayerStats() {
         totalAdjustmentsCents,
         adjustments,
       });
+      setHasLoadedOnce(true);
     } catch (err) {
       console.error('Error loading player stats:', err);
       setError(err instanceof Error ? err.message : 'Failed to load stats');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -129,10 +139,15 @@ export function usePlayerStats() {
     loadStats();
   }, [user]);
 
+  const refresh = async () => {
+    await loadStats(true); // Pass true to indicate this is a refresh
+  };
+
   return {
     stats,
     loading,
+    refreshing,
     error,
-    refresh: loadStats,
+    refresh,
   };
 }
