@@ -23,7 +23,9 @@ import { formatCents, formatCentsWithSign } from '@/utils/settleUp';
 import * as ResultsRepo from '@/db/repositories/results';
 import * as BuyInsRepo from '@/db/repositories/buyins';
 import * as SessionsRepo from '@/db/repositories/sessions';
+import * as SettlementsRepo from '@/db/repositories/settlements';
 import { calculateSettleUpTransactions } from '@/utils/settleUp';
+import { Settlement } from '@/types';
 
 type RootStackParamList = {
   SessionDetails: { sessionId: string };
@@ -62,6 +64,7 @@ export default function SessionDetailsScreen() {
   const [pendingBuyIns, setPendingBuyIns] = useState<Array<any>>([]);
   const [buyInHistory, setBuyInHistory] = useState<Array<any>>([]);
   const [selectedBuyInIds, setSelectedBuyInIds] = useState<Set<string>>(new Set());
+  const [savedSettlements, setSavedSettlements] = useState<Settlement[]>([]);
 
   const session = sessions.find((s) => s.id === sessionId);
 
@@ -71,7 +74,11 @@ export default function SessionDetailsScreen() {
     if (isAdmin) {
       loadPendingBuyIns();
     }
-  }, [buyIns, members, sessionId, isAdmin]);
+    // Load settlements if session is completed
+    if (session?.status === 'completed') {
+      loadSettlements();
+    }
+  }, [buyIns, members, sessionId, isAdmin, session?.status]);
 
   useEffect(() => {
     checkAdminStatus();
@@ -149,6 +156,15 @@ export default function SessionDetailsScreen() {
       setBuyInHistory(sorted);
     } catch (error) {
       console.error('Error loading buy-in history:', error);
+    }
+  };
+
+  const loadSettlements = async () => {
+    try {
+      const settlements = await SettlementsRepo.getSettlementsBySessionId(sessionId);
+      setSavedSettlements(settlements);
+    } catch (error) {
+      console.error('Error loading settlements:', error);
     }
   };
 
@@ -414,6 +430,32 @@ export default function SessionDetailsScreen() {
   const confirmCompleteSession = async () => {
     try {
       setActionLoading(true);
+
+      // Save settlements to database before marking session as completed
+      console.log('💾 Saving settlements to database...');
+      if (settlements.length > 0) {
+        // Find member IDs for each settlement
+        const settlementPromises = settlements.map(async (settlement) => {
+          const fromMember = members.find(m => m.name === settlement.fromMemberName);
+          const toMember = members.find(m => m.name === settlement.toMemberName);
+
+          if (!fromMember || !toMember) {
+            console.error('Could not find member IDs for settlement:', settlement);
+            return;
+          }
+
+          return SettlementsRepo.createSettlement(
+            sessionId,
+            fromMember.id,
+            toMember.id,
+            settlement.amountCents
+          );
+        });
+
+        await Promise.all(settlementPromises);
+        console.log('✅ Settlements saved to database');
+      }
+
       console.log('🔄 Updating session status to completed...');
       await SessionsRepo.updateSessionStatus(sessionId, 'completed');
       console.log('✅ Session status updated');
@@ -431,6 +473,29 @@ export default function SessionDetailsScreen() {
     } catch (error) {
       console.error('Error completing session:', error);
       Alert.alert('Error', 'Failed to complete session');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleSettlementPaid = async (settlementId: string, currentPaidStatus: boolean) => {
+    if (!user?.id) return;
+
+    try {
+      setActionLoading(true);
+      if (currentPaidStatus) {
+        // Mark as unpaid
+        await SettlementsRepo.markSettlementAsUnpaid(settlementId);
+      } else {
+        // Mark as paid
+        await SettlementsRepo.markSettlementAsPaid(settlementId, user.id);
+      }
+      // Reload settlements
+      await loadSettlements();
+      Alert.alert('Success', currentPaidStatus ? 'Marked as unpaid' : 'Marked as paid');
+    } catch (error) {
+      console.error('Error toggling settlement status:', error);
+      Alert.alert('Error', 'Failed to update settlement status');
     } finally {
       setActionLoading(false);
     }
@@ -692,6 +757,77 @@ export default function SessionDetailsScreen() {
                   </Card.Content>
                 </Card>
               ))}
+            </View>
+          </>
+        )}
+
+        {/* Settlements Section - Only for completed sessions */}
+        {session.status === 'completed' && savedSettlements.length > 0 && (
+          <>
+            <Divider style={styles.divider} />
+            <View style={[styles.section, styles.historySection]}>
+              <Text style={styles.sectionTitle}>Settlements ({savedSettlements.length})</Text>
+              <View style={{ height: 12 }} />
+              {savedSettlements.map((settlement) => {
+                const fromMember = members.find(m => m.id === settlement.fromMemberId);
+                const toMember = members.find(m => m.id === settlement.toMemberId);
+                const paidByMember = settlement.paidBy ? members.find(m => m.userId === settlement.paidBy) : null;
+
+                return (
+                  <Card key={settlement.id} style={[
+                    styles.historyCard,
+                    !settlement.paid && styles.historyCardPending
+                  ]}>
+                    <Card.Content>
+                      <View style={styles.historyRow}>
+                        <View style={styles.historyInfo}>
+                          <View style={styles.historyHeader}>
+                            <Text style={styles.historyMemberName}>
+                              {fromMember?.name || 'Unknown'} → {toMember?.name || 'Unknown'}
+                            </Text>
+                            <View style={[
+                              styles.statusBadge,
+                              settlement.paid ? styles.statusApproved : styles.statusPending
+                            ]}>
+                              <Text style={[
+                                styles.statusText,
+                                settlement.paid ? styles.statusTextApproved : styles.statusTextPending
+                              ]}>
+                                {settlement.paid ? '✓ Paid' : '⏱ Unpaid'}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={styles.historyTimestamp}>
+                            Settled: {formatDate(settlement.settledAt)}
+                          </Text>
+                          {settlement.paid && settlement.paidAt && (
+                            <Text style={styles.historyApprovalInfo}>
+                              Paid: {formatDate(settlement.paidAt)}
+                              {paidByMember && ` by ${paidByMember.name}`}
+                            </Text>
+                          )}
+                          {settlement.note && (
+                            <Text style={styles.historyApprovalInfo}>{settlement.note}</Text>
+                          )}
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={styles.historyAmount}>{formatCents(settlement.amountCents)}</Text>
+                          <Button
+                            mode={settlement.paid ? 'outlined' : 'contained'}
+                            onPress={() => handleToggleSettlementPaid(settlement.id, settlement.paid)}
+                            disabled={actionLoading}
+                            compact
+                            style={{ marginTop: spacing.xs }}
+                            buttonColor={settlement.paid ? undefined : darkColors.positive}
+                          >
+                            {settlement.paid ? 'Mark Unpaid' : 'Mark Paid'}
+                          </Button>
+                        </View>
+                      </View>
+                    </Card.Content>
+                  </Card>
+                );
+              })}
             </View>
           </>
         )}

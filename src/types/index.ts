@@ -69,6 +69,9 @@ export interface Settlement {
   amountCents: number;
   settledAt: string;
   note?: string;
+  paid: boolean;
+  paidAt?: string;
+  paidBy?: string;
   createdAt: string;
   updatedAt?: string;
   pendingSync?: number;
