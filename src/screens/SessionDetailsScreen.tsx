@@ -457,6 +457,10 @@ export default function SessionDetailsScreen() {
         console.log('✅ Settlements saved to database');
       }
 
+      // Send notification to all session members (fire and forget)
+      NotificationManager.notifySessionCompleted(sessionId)
+        .catch(err => console.error('Failed to send completion notification:', err));
+
       console.log('🔄 Updating session status to completed...');
       await SessionsRepo.updateSessionStatus(sessionId, 'completed');
       console.log('✅ Session status updated');
