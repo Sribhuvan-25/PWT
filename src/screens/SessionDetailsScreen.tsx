@@ -856,15 +856,46 @@ export default function SessionDetailsScreen() {
             <Text style={styles.dialogText}>
               Adding buy-in for: {selectedMember?.name}
             </Text>
+
+            {/* Preset Amount Buttons */}
+            <Text style={styles.presetLabel}>Quick amounts:</Text>
+            <View style={styles.presetButtonsContainer}>
+              <Button
+                mode="outlined"
+                onPress={() => setBuyInAmount('50')}
+                style={[styles.presetButton, buyInAmount === '50' && styles.presetButtonSelected]}
+                compact
+              >
+                $50
+              </Button>
+              <Button
+                mode="outlined"
+                onPress={() => setBuyInAmount('100')}
+                style={[styles.presetButton, buyInAmount === '100' && styles.presetButtonSelected]}
+                compact
+              >
+                $100
+              </Button>
+              <Button
+                mode="outlined"
+                onPress={() => setBuyInAmount('200')}
+                style={[styles.presetButton, buyInAmount === '200' && styles.presetButtonSelected]}
+                compact
+              >
+                $200
+              </Button>
+            </View>
+
+            {/* Custom Amount Input */}
             <TextInput
-              label="Amount"
+              label="Custom Amount"
               value={buyInAmount}
               onChangeText={setBuyInAmount}
               mode="outlined"
-              placeholder="100"
+              placeholder="Enter custom amount"
               keyboardType="numeric"
               left={<TextInput.Affix text="$" />}
-              autoFocus
+              style={styles.customAmountInput}
             />
           </Dialog.Content>
           <Dialog.Actions>
@@ -1338,6 +1369,30 @@ const styles = StyleSheet.create({
   },
   bulkRejectButton: {
     borderColor: darkColors.negative,
+  },
+  presetLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: darkColors.textPrimary,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  presetButtonsContainer: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  presetButton: {
+    flex: 1,
+    borderColor: darkColors.border,
+  },
+  presetButtonSelected: {
+    borderColor: darkColors.accent,
+    borderWidth: 2,
+    backgroundColor: darkColors.accent + '20',
+  },
+  customAmountInput: {
+    marginTop: spacing.xs,
   },
 });
 
