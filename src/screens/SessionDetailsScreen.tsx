@@ -24,6 +24,7 @@ import * as ResultsRepo from '@/db/repositories/results';
 import * as BuyInsRepo from '@/db/repositories/buyins';
 import * as SessionsRepo from '@/db/repositories/sessions';
 import * as SettlementsRepo from '@/db/repositories/settlements';
+import * as NotificationManager from '@/services/notificationManager';
 import { calculateSettleUpTransactions } from '@/utils/settleUp';
 import { Settlement } from '@/types';
 

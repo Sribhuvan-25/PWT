@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pokertracker.app"
+      "bundleIdentifier": "com.pokertracker.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "package": "com.pokertracker.app",
@@ -24,7 +27,15 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json",
+      "useNextNotificationsApi": true
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#1976D2",
+      "androidMode": "default",
+      "androidCollapsedTitle": "Poker Tracker"
     },
     "web": {
       "favicon": "./assets/favicon.png"

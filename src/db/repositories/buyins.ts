@@ -1,5 +1,6 @@
 import { getSupabase } from '../supabase';
 import { BuyIn } from '@/types';
+import * as NotificationManager from '@/services/notificationManager';
 
 // Helper to convert Supabase snake_case to camelCase
 function mapSupabaseBuyIn(row: any): BuyIn {
@@ -33,7 +34,25 @@ export async function createBuyIn(
     .single();
 
   if (error) throw error;
-  return mapSupabaseBuyIn(data);
+
+  const buyIn = mapSupabaseBuyIn(data);
+
+  // Send notification to session admins (fire and forget)
+  const { data: member } = await supabase
+    .from('members')
+    .select('name')
+    .eq('id', memberId)
+    .single();
+
+  if (member) {
+    NotificationManager.notifyBuyInRequest(
+      sessionId,
+      member.name,
+      amountCents
+    ).catch(err => console.error('Failed to send buy-in notification:', err));
+  }
+
+  return buyIn;
 }
 
 export async function getBuyInsBySessionId(sessionId: string): Promise<BuyIn[]> {
@@ -95,6 +114,13 @@ export async function deleteBuyIn(id: string): Promise<void> {
 export async function approveBuyIn(id: string, userId: string): Promise<BuyIn> {
   const supabase = getSupabase();
 
+  // Get buy-in with member info before updating
+  const { data: buyInData } = await supabase
+    .from('buy_ins')
+    .select('*, members!inner(user_id)')
+    .eq('id', id)
+    .single();
+
   const { data, error } = await supabase
     .from('buy_ins')
     .update({
@@ -107,7 +133,19 @@ export async function approveBuyIn(id: string, userId: string): Promise<BuyIn> {
     .single();
 
   if (error) throw error;
-  return mapSupabaseBuyIn(data);
+
+  const buyIn = mapSupabaseBuyIn(data);
+
+  // Send approval notification to the member (fire and forget)
+  if (buyInData && buyInData.members?.user_id) {
+    NotificationManager.notifyBuyInApproved(
+      buyIn.sessionId,
+      buyInData.members.user_id,
+      buyIn.amountCents
+    ).catch(err => console.error('Failed to send approval notification:', err));
+  }
+
+  return buyIn;
 }
 
 export async function getPendingBuyIns(sessionId: string): Promise<BuyIn[]> {
