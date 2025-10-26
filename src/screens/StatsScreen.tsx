@@ -7,6 +7,8 @@ import { formatDate } from '@/utils/formatters';
 import { formatCentsWithSign, formatCents, parseDollarsToCents } from '@/utils/settleUp';
 import * as ManualAdjustmentsRepo from '@/db/repositories/manualAdjustments';
 import { useAuthStore } from '@/stores/authStore';
+import CashFlowChart from '@/components/CashFlowChart';
+import ProfitLossGraph from '@/components/ProfitLossGraph';
 
 export default function StatsScreen() {
   const { stats, loading, refreshing, refresh } = usePlayerStats();
@@ -86,6 +88,19 @@ export default function StatsScreen() {
           {stats.totalNetCents >= 0 ? 'Net Profit' : 'Net Loss'}
         </Text>
       </View>
+
+      {/* Cash Flow Visualization */}
+      {stats.sessionHistory.length > 0 && (
+        <CashFlowChart
+          sessionHistory={stats.sessionHistory}
+          totalAdjustmentsCents={stats.totalAdjustmentsCents}
+        />
+      )}
+
+      {/* Profit/Loss Trends */}
+      {stats.sessionHistory.length > 0 && (
+        <ProfitLossGraph sessionHistory={stats.sessionHistory} />
+      )}
 
       {/* Manual Adjustments Section */}
       {stats.adjustments.length > 0 && (
