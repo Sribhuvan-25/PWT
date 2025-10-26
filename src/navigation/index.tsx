@@ -9,6 +9,7 @@ import SessionsScreen from '../screens/SessionsScreen';
 import SessionDetailsScreen from '../screens/SessionDetailsScreen';
 import StatsScreen from '../screens/StatsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import SplitPotScreen from '../screens/SplitPotScreen';
 
 import { darkColors } from '../utils/theme';
 import { useAuthStore } from '../stores/authStore';
@@ -52,6 +53,8 @@ function MainTabs() {
             iconName = focused ? 'calendar' : 'calendar-outline';
           } else if (route.name === 'Stats') {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+          } else if (route.name === 'Tools') {
+            iconName = focused ? 'calculator' : 'calculator-outline';
           } else {
             iconName = focused ? 'settings' : 'settings-outline';
           }
@@ -70,12 +73,17 @@ function MainTabs() {
         headerTintColor: darkColors.textPrimary,
       })}
     >
-      <Tab.Screen 
-        name="Sessions" 
+      <Tab.Screen
+        name="Sessions"
         component={SessionsNavigator}
         options={{ headerShown: false }}
       />
       <Tab.Screen name="Stats" component={StatsScreen} />
+      <Tab.Screen
+        name="Tools"
+        component={SplitPotScreen}
+        options={{ title: 'Split Pot Calculator' }}
+      />
       <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
