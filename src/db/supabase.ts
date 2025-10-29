@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
+import { logger } from '../utils/logger';
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -9,7 +10,7 @@ export function initSupabase(): SupabaseClient {
   if (supabase) return supabase;
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.warn('⚠️ Supabase credentials not configured');
+    logger.error('Supabase credentials not configured in environment');
     throw new Error('Supabase URL and Anon Key must be set in .env file');
   }
 
@@ -20,7 +21,7 @@ export function initSupabase(): SupabaseClient {
     },
   });
 
-  console.log('✅ Supabase client initialized');
+  logger.info('Supabase client initialized');
   return supabase;
 }
 
@@ -128,7 +129,7 @@ export function subscribeToSession(
         filter: `id=eq.${sessionId}`,
       },
       (payload) => {
-        console.log('🔔 Session change:', payload);
+        logger.debug('Realtime: Session change received', { sessionId, event: payload.eventType });
         callbacks.onSessionChange?.(payload);
       }
     )
@@ -141,7 +142,7 @@ export function subscribeToSession(
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        console.log('🔔 Result change:', payload);
+        logger.debug('Realtime: Result change received', { sessionId, event: payload.eventType });
         callbacks.onResultChange?.(payload);
       }
     )
@@ -154,7 +155,7 @@ export function subscribeToSession(
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        console.log('🔔 Member change:', payload);
+        logger.debug('Realtime: Member change received', { sessionId, event: payload.eventType });
         callbacks.onMemberChange?.(payload);
       }
     )

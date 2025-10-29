@@ -2,6 +2,7 @@ import React, { Component, ReactNode } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { darkColors, spacing } from '@/utils/theme';
+import { logger } from '@/utils/logger';
 
 interface Props {
   children: ReactNode;
@@ -33,16 +34,15 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log error to error reporting service (e.g., Sentry)
-    console.error('Error caught by boundary:', error, errorInfo);
+    // Log error to error reporting service
+    logger.error('React Error Boundary caught error', error, errorInfo);
 
     this.setState({
       error,
       errorInfo,
     });
 
-    // TODO: Send to crash reporting service
-    // Sentry.captureException(error, { extra: errorInfo });
+    // Error is automatically sent to crash reporting via logger.error()
   }
 
   handleReset = () => {
@@ -89,7 +89,7 @@ export class ErrorBoundary extends Component<Props, State> {
               mode="contained"
               onPress={this.handleReset}
               style={styles.button}
-              buttonColor={darkColors.primary}
+              buttonColor={darkColors.accent}
             >
               Try Again
             </Button>
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: darkColors.text,
+    color: darkColors.textPrimary,
     marginBottom: spacing.md,
     textAlign: 'center',
   },

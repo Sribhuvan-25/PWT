@@ -23,6 +23,9 @@ import {
 } from './src/services/notificationService';
 import * as PushTokensRepo from './src/db/repositories/pushTokens';
 import { Text } from 'react-native';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import OfflineBanner from './src/components/OfflineBanner';
+import { logger } from './src/utils/logger';
 
 export default function App() {
   const [appInitialized, setAppInitialized] = useState(false);
@@ -50,7 +53,7 @@ export default function App() {
 
         setAppInitialized(true);
       } catch (err) {
-        console.error('Initialization failed:', err);
+        logger.error('App initialization failed', err);
         setError(err instanceof Error ? err.message : 'Initialization failed');
       }
     }
@@ -83,10 +86,10 @@ export default function App() {
             tokenData.token,
             tokenData.platform
           );
-          console.log('Push token saved to database');
+          logger.info('Push token registered and saved');
         }
       } catch (err) {
-        console.error('Error setting up push notifications:', err);
+        logger.error('Failed to set up push notifications', err);
       }
     }
 
@@ -94,22 +97,21 @@ export default function App() {
 
     // Set up notification listeners
     notificationListener.current = addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
+      logger.debug('Notification received while app in foreground');
       // You can handle foreground notifications here
     });
 
     responseListener.current = addNotificationResponseListener(response => {
-      console.log('Notification tapped:', response);
-      // Handle notification tap here - navigate to relevant screen
       const data = response.notification.request.content.data;
+      logger.breadcrumb('Notification tapped', { type: data.type });
 
       // You can add navigation logic based on notification type
       if (data.type === 'buyin-request' && data.sessionId) {
         // Navigate to session details
-        console.log('Navigate to session:', data.sessionId);
+        logger.debug('Navigate to session from notification', { sessionId: data.sessionId });
       } else if (data.type === 'settlement-reminder' && data.sessionId) {
         // Navigate to settlements
-        console.log('Navigate to settlements:', data.sessionId);
+        logger.debug('Navigate to settlements from notification', { sessionId: data.sessionId });
       }
     });
 
@@ -141,10 +143,13 @@ export default function App() {
   }
 
   return (
-    <PaperProvider theme={darkTheme}>
-      <StatusBar style="light" />
-      <Navigation />
-    </PaperProvider>
+    <ErrorBoundary>
+      <PaperProvider theme={darkTheme}>
+        <StatusBar style="light" />
+        <Navigation />
+        <OfflineBanner />
+      </PaperProvider>
+    </ErrorBoundary>
   );
 }
 

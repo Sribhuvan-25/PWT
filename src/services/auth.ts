@@ -3,6 +3,7 @@ import { User } from '../types';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logger } from '../utils/logger';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -19,8 +20,7 @@ export async function signInWithGoogle(): Promise<User | null> {
       native: 'pokertracker://auth/callback'
     });
 
-    console.log('Redirect URL:', redirectTo);
-    console.log('Note: Add this URL to Google Cloud Console Authorized redirect URIs');
+    logger.debug('OAuth redirect URL configured', { redirectTo });
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -42,29 +42,24 @@ export async function signInWithGoogle(): Promise<User | null> {
         redirectTo
       );
 
-      console.log('OAuth result:', result);
+      logger.debug('OAuth browser result', { type: result.type });
 
       if (result.type === 'success' && result.url) {
-        console.log('✅ OAuth succeeded, processing URL...');
+        logger.info('OAuth succeeded, processing tokens');
         // Extract the URL params and exchange for session
         // Supabase returns tokens in the hash fragment, not query params
         const url = result.url;
-        console.log('Full URL:', url);
         const hashIndex = url.indexOf('#');
-        console.log('Hash index:', hashIndex);
 
         if (hashIndex !== -1) {
           const hashFragment = url.substring(hashIndex + 1);
-          console.log('Hash fragment:', hashFragment);
           const hashParams = new URLSearchParams(hashFragment);
           const accessToken = hashParams.get('access_token');
           const refreshToken = hashParams.get('refresh_token');
 
-          console.log('Extracted tokens:', {
+          logger.debug('Tokens extracted', {
             hasAccessToken: !!accessToken,
             hasRefreshToken: !!refreshToken,
-            accessTokenLength: accessToken?.length,
-            refreshTokenLength: refreshToken?.length
           });
 
           if (accessToken && refreshToken) {
@@ -74,12 +69,13 @@ export async function signInWithGoogle(): Promise<User | null> {
             });
 
             if (sessionError) {
-              console.error('Session error:', sessionError);
+              logger.error('Failed to set session', sessionError);
               throw sessionError;
             }
 
             if (session?.user) {
-              console.log('User authenticated:', session.user.email);
+              logger.info('User authenticated successfully');
+              logger.setUser(session.user.id, session.user.email);
               return {
                 id: session.user.id,
                 email: session.user.email!,
@@ -95,7 +91,7 @@ export async function signInWithGoogle(): Promise<User | null> {
 
     return null;
   } catch (error) {
-    console.error('Sign in error:', error);
+    logger.error('Google sign in failed', error);
     throw error;
   }
 }
@@ -107,13 +103,14 @@ export async function signOut(): Promise<void> {
     // Sign out from Supabase (clears session and cookies)
     const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error('Supabase sign out error:', error);
+      logger.error('Supabase sign out error', error);
       throw error;
     }
 
-    console.log('✅ Successfully signed out');
+    logger.info('User signed out successfully');
+    logger.clearUser();
   } catch (error) {
-    console.error('Sign out error:', error);
+    logger.error('Sign out failed', error);
     throw error;
   }
 }
@@ -132,7 +129,7 @@ export async function getCurrentUser(): Promise<User | null> {
       displayName = savedDisplayName;
     }
   } catch (error) {
-    console.error('Failed to load display name:', error);
+    logger.error('Failed to load display name', error);
   }
 
   return {
@@ -158,7 +155,7 @@ export function onAuthStateChange(callback: (user: User | null) => void) {
             displayName = savedDisplayName;
           }
         } catch (error) {
-          console.error('Failed to load display name:', error);
+          logger.error('Failed to load display name on auth change', error);
         }
 
         const user: User = {
