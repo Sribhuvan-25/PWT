@@ -11,6 +11,8 @@ import CashFlowChart from '@/components/CashFlowChart';
 import ProfitLossGraph from '@/components/ProfitLossGraph';
 import { ManualAdjustmentDialog } from '@/components/stats/ManualAdjustmentDialog';
 import { SessionHistoryList } from '@/components/stats/SessionHistoryList';
+import { ErrorHandler } from '@/utils/errorHandler';
+import { logger } from '@/utils/logger';
 
 export default function StatsScreen() {
   const { stats, loading, refreshing, refresh } = usePlayerStats();
@@ -39,8 +41,10 @@ export default function StatsScreen() {
       setAdjustmentModalVisible(false);
       await refresh();
     } catch (error) {
-      console.error('Error adding adjustment:', error);
-      Alert.alert('Error', 'Failed to add adjustment');
+      ErrorHandler.handle(error, {
+        title: 'Failed to Add Adjustment',
+        message: 'Could not add manual adjustment. Please try again.',
+      });
     } finally {
       setActionLoading(false);
     }
@@ -60,8 +64,10 @@ export default function StatsScreen() {
               await ManualAdjustmentsRepo.deleteAdjustment(id);
               await refresh();
             } catch (error) {
-              console.error('Error deleting adjustment:', error);
-              Alert.alert('Error', 'Failed to delete adjustment');
+              ErrorHandler.handle(error, {
+                title: 'Failed to Delete Adjustment',
+                message: 'Could not delete adjustment. Please try again.',
+              });
             }
           },
         },
