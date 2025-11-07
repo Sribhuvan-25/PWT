@@ -1,21 +1,22 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Alert, TouchableOpacity, Modal, TextInput as RNTextInput } from 'react-native';
-import { Text, Card, Button, TextInput, IconButton } from 'react-native-paper';
+import { View, StyleSheet, Alert } from 'react-native';
+import { Text, Button, IconButton } from 'react-native-paper';
 import { usePlayerStats } from '@/hooks/usePlayerStats';
 import { darkColors, spacing } from '@/utils/theme';
 import { formatDate } from '@/utils/formatters';
-import { formatCentsWithSign, formatCents, parseDollarsToCents } from '@/utils/settleUp';
+import { formatCentsWithSign, parseDollarsToCents } from '@/utils/settleUp';
 import * as ManualAdjustmentsRepo from '@/db/repositories/manualAdjustments';
 import { useAuthStore } from '@/stores/authStore';
 import CashFlowChart from '@/components/CashFlowChart';
 import ProfitLossGraph from '@/components/ProfitLossGraph';
+import { ManualAdjustmentDialog } from '@/components/stats/ManualAdjustmentDialog';
+import { SessionHistoryList } from '@/components/stats/SessionHistoryList';
+import { ErrorHandler } from '@/utils/errorHandler';
 
 export default function StatsScreen() {
   const { stats, loading, refreshing, refresh } = usePlayerStats();
   const { user } = useAuthStore();
   const [adjustmentModalVisible, setAdjustmentModalVisible] = useState(false);
-  const [adjustmentAmount, setAdjustmentAmount] = useState('');
-  const [adjustmentNote, setAdjustmentNote] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
   const getResultColor = (netCents: number) => {
@@ -24,7 +25,7 @@ export default function StatsScreen() {
     return darkColors.textMuted;
   };
 
-  const handleAddAdjustment = async () => {
+  const handleAddAdjustment = async (adjustmentAmount: string, adjustmentNote: string) => {
     if (!user) return;
 
     const amountCents = parseDollarsToCents(adjustmentAmount);
@@ -37,12 +38,12 @@ export default function StatsScreen() {
       setActionLoading(true);
       await ManualAdjustmentsRepo.createAdjustment(user.id, amountCents, adjustmentNote || undefined);
       setAdjustmentModalVisible(false);
-      setAdjustmentAmount('');
-      setAdjustmentNote('');
       await refresh();
     } catch (error) {
-      console.error('Error adding adjustment:', error);
-      Alert.alert('Error', 'Failed to add adjustment');
+      ErrorHandler.handle(error, {
+        title: 'Failed to Add Adjustment',
+        message: 'Could not add manual adjustment. Please try again.',
+      });
     } finally {
       setActionLoading(false);
     }
@@ -62,8 +63,10 @@ export default function StatsScreen() {
               await ManualAdjustmentsRepo.deleteAdjustment(id);
               await refresh();
             } catch (error) {
-              console.error('Error deleting adjustment:', error);
-              Alert.alert('Error', 'Failed to delete adjustment');
+              ErrorHandler.handle(error, {
+                title: 'Failed to Delete Adjustment',
+                message: 'Could not delete adjustment. Please try again.',
+              });
             }
           },
         },
@@ -153,137 +156,20 @@ export default function StatsScreen() {
         <Text style={styles.sectionTitle}>Game History</Text>
       </View>
 
-      {loading ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyText}>Loading stats...</Text>
-        </View>
-      ) : stats.sessionHistory.length === 0 ? (
-        <View style={styles.centered}>
-          <Text style={styles.emptyText}>No game history yet</Text>
-          <Text style={styles.emptySubtext}>
-            Join groups and play sessions to see your stats!
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={stats.sessionHistory}
-          keyExtractor={(item) => `${item.sessionId}-${item.date}`}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={refresh}
-              tintColor={darkColors.accent}
-            />
-          }
-          renderItem={({ item }) => (
-            <Card style={styles.card}>
-              <Card.Content>
-                <View style={styles.sessionHeader}>
-                  <View style={styles.sessionInfo}>
-                    <Text style={styles.groupName}>{item.groupName}</Text>
-                    <Text style={styles.date}>{formatDate(item.date)}</Text>
-                    {item.note && (
-                      <Text style={styles.note}>{item.note}</Text>
-                    )}
-                  </View>
-                  <View style={styles.resultContainer}>
-                    <Text
-                      style={[
-                        styles.result,
-                        { color: getResultColor(item.netCents) },
-                      ]}
-                    >
-                      {formatCentsWithSign(item.netCents)}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.resultLabel,
-                        { color: getResultColor(item.netCents) },
-                      ]}
-                    >
-                      {item.netCents > 0
-                        ? 'Win'
-                        : item.netCents < 0
-                        ? 'Loss'
-                        : 'Break Even'}
-                    </Text>
-                  </View>
-                </View>
-              </Card.Content>
-            </Card>
-          )}
-        />
-      )}
+      <SessionHistoryList
+        sessionHistory={stats.sessionHistory}
+        loading={loading}
+        refreshing={refreshing}
+        onRefresh={refresh}
+      />
 
       {/* Add Adjustment Modal */}
-      <Modal
+      <ManualAdjustmentDialog
         visible={adjustmentModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAdjustmentModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setAdjustmentModalVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Add Manual Adjustment</Text>
-              <Text style={styles.modalDescription}>
-                Add or subtract from your total P/L. Use negative amounts for losses.
-              </Text>
-
-              <TextInput
-                label="Amount (e.g., -50 or 100)"
-                value={adjustmentAmount}
-                onChangeText={setAdjustmentAmount}
-                keyboardType="numeric"
-                mode="outlined"
-                style={styles.input}
-                placeholder="0.00"
-                outlineColor={darkColors.border}
-                activeOutlineColor={darkColors.accent}
-                textColor={darkColors.textPrimary}
-              />
-
-              <TextInput
-                label="Note (optional)"
-                value={adjustmentNote}
-                onChangeText={setAdjustmentNote}
-                mode="outlined"
-                style={styles.input}
-                placeholder="Reason for adjustment"
-                outlineColor={darkColors.border}
-                activeOutlineColor={darkColors.accent}
-                textColor={darkColors.textPrimary}
-              />
-
-              <View style={styles.modalButtons}>
-                <Button
-                  onPress={() => setAdjustmentModalVisible(false)}
-                  disabled={actionLoading}
-                  textColor={darkColors.textMuted}
-                  style={styles.modalButton}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onPress={handleAddAdjustment}
-                  loading={actionLoading}
-                  disabled={actionLoading || !adjustmentAmount}
-                  mode="contained"
-                  buttonColor={darkColors.accent}
-                  style={styles.modalButton}
-                >
-                  Add
-                </Button>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        isLoading={actionLoading}
+        onDismiss={() => setAdjustmentModalVisible(false)}
+        onSubmit={handleAddAdjustment}
+      />
     </View>
   );
 }
@@ -324,70 +210,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: darkColors.textPrimary,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: darkColors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: darkColors.textMuted,
-    textAlign: 'center',
-  },
-  list: {
-    padding: spacing.lg,
-    paddingTop: 0,
-  },
-  card: {
-    marginBottom: spacing.md,
-    backgroundColor: darkColors.card,
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sessionInfo: {
-    flex: 1,
-  },
-  groupName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: darkColors.textPrimary,
-    marginBottom: 4,
-  },
-  date: {
-    fontSize: 14,
-    color: darkColors.textMuted,
-    marginBottom: 2,
-  },
-  note: {
-    fontSize: 12,
-    color: darkColors.textMuted,
-    fontStyle: 'italic',
-  },
-  resultContainer: {
-    alignItems: 'flex-end',
-    marginLeft: spacing.md,
-  },
-  result: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  resultLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -435,43 +257,4 @@ const styles = StyleSheet.create({
   addAdjustmentButton: {
     borderColor: darkColors.accent,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  modalContent: {
-    backgroundColor: darkColors.card,
-    borderRadius: 16,
-    padding: spacing.xl,
-    width: 340,
-    maxWidth: '100%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: darkColors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  modalDescription: {
-    fontSize: 14,
-    color: darkColors.textMuted,
-    marginBottom: spacing.lg,
-  },
-  input: {
-    marginBottom: spacing.md,
-    backgroundColor: darkColors.background,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.md,
-    marginTop: spacing.md,
-  },
-  modalButton: {
-    minWidth: 80,
-  },
 });
-

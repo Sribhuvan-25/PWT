@@ -9,7 +9,7 @@ export interface SessionHistoryItem {
   sessionId: string;
   groupName: string;
   date: string;
-  note?: string;
+  note?: string | null;
   netCents: number;
 }
 

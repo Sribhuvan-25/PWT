@@ -1,21 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Modal, TouchableWithoutFeedback } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView, Modal, TouchableWithoutFeedback, Alert } from 'react-native';
 import {
   Text,
   Card,
   Button,
-  Portal,
-  Dialog,
-  TextInput,
   Divider,
-  ActivityIndicator,
   DataTable,
-  Checkbox,
 } from 'react-native-paper';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useSessions } from '@/hooks/useSessions';
 import { useMembers } from '@/hooks/useMembers';
 import { useBuyIns } from '@/hooks/useBuyIns';
+import { useSessionData } from '@/hooks/useSessionData';
+import { useBuyInApprovals } from '@/hooks/useBuyInApprovals';
+import { useSessionSettlements } from '@/hooks/useSessionSettlements';
 import { useAuthStore } from '@/stores/authStore';
 import { darkColors, spacing } from '@/utils/theme';
 import { formatDate } from '@/utils/formatters';
@@ -26,21 +24,17 @@ import * as SessionsRepo from '@/db/repositories/sessions';
 import * as SettlementsRepo from '@/db/repositories/settlements';
 import * as NotificationManager from '@/services/notificationManager';
 import { calculateSettleUpTransactions } from '@/utils/settleUp';
-import { Settlement } from '@/types';
+import { handleError } from '@/utils/errorHandler';
+import { logger } from '@/utils/logger';
+import BuyInDialog from '@/components/session/BuyInDialog';
+import CashoutDialog from '@/components/session/CashoutDialog';
+import PendingApprovals from '@/components/session/PendingApprovals';
 
 type RootStackParamList = {
   SessionDetails: { sessionId: string };
 };
 
 type SessionDetailsRouteProp = RouteProp<RootStackParamList, 'SessionDetails'>;
-
-interface MemberSessionData {
-  memberId: string;
-  memberName: string;
-  totalBuyIns: number;
-  cashout: number;
-  netResult: number;
-}
 
 export default function SessionDetailsScreen() {
   const route = useRoute<SessionDetailsRouteProp>();
@@ -50,256 +44,54 @@ export default function SessionDetailsScreen() {
   const { user } = useAuthStore();
   const { sessions, refresh: refreshSessions } = useSessions();
   const { members } = useMembers(sessionId);
-  const { buyIns, addBuyIn } = useBuyIns(sessionId);
+  const { buyIns, addBuyIn: addBuyInToDb } = useBuyIns(sessionId);
 
+  // Use custom hooks
+  const { memberData, buyInHistory, reload: reloadSessionData } = useSessionData(
+    sessionId,
+    members,
+    buyIns
+  );
+
+  const {
+    isAdmin,
+    pendingBuyIns,
+    selectedBuyInIds,
+    isLoading: approvalsLoading,
+    toggleSelection,
+    toggleSelectAll,
+    approveBuyIn: approveSingle,
+    rejectBuyIn: rejectSingle,
+    bulkApprove,
+    bulkReject,
+  } = useBuyInApprovals(sessionId, user?.id, members, reloadSessionData);
+
+  const {
+    settlements: savedSettlements,
+    isLoading: settlementsLoading,
+    togglePaidStatus,
+  } = useSessionSettlements(sessionId, session?.status, user?.id);
+
+  // Local state for dialogs
   const [addBuyInDialogVisible, setAddBuyInDialogVisible] = useState(false);
   const [cashoutDialogVisible, setCashoutDialogVisible] = useState(false);
   const [settlementDialogVisible, setSettlementDialogVisible] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
-  const [buyInAmount, setBuyInAmount] = useState('');
-  const [cashoutAmount, setCashoutAmount] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
-  const [memberData, setMemberData] = useState<MemberSessionData[]>([]);
-  const [settlements, setSettlements] = useState<Array<{ fromMemberName: string; toMemberName: string; amountCents: number }>>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [pendingBuyIns, setPendingBuyIns] = useState<Array<any>>([]);
-  const [buyInHistory, setBuyInHistory] = useState<Array<any>>([]);
-  const [selectedBuyInIds, setSelectedBuyInIds] = useState<Set<string>>(new Set());
-  const [savedSettlements, setSavedSettlements] = useState<Settlement[]>([]);
+  const [settlements, setSettlements] = useState<
+    Array<{ fromMemberName: string; toMemberName: string; amountCents: number }>
+  >([]);
 
   const session = sessions.find((s) => s.id === sessionId);
 
-  useEffect(() => {
-    loadMemberData();
-    loadBuyInHistory();
-    if (isAdmin) {
-      loadPendingBuyIns();
-    }
-    // Load settlements if session is completed
-    if (session?.status === 'completed') {
-      loadSettlements();
-    }
-  }, [buyIns, members, sessionId, isAdmin, session?.status]);
-
-  useEffect(() => {
-    checkAdminStatus();
-  }, [sessionId, user]);
-
-  const checkAdminStatus = async () => {
-    if (!user?.id) {
-      setIsAdmin(false);
-      return;
-    }
-
-    try {
-      const adminStatus = await SessionsRepo.isSessionAdmin(sessionId, user.id);
-      setIsAdmin(adminStatus);
-    } catch (error) {
-      console.error('Error checking admin status:', error);
-      setIsAdmin(false);
-    }
-  };
-
-  const loadMemberData = async () => {
-    const data: MemberSessionData[] = [];
-
-    for (const member of members) {
-      const totalBuyIns = await BuyInsRepo.getTotalBuyInsByMember(sessionId, member.id);
-      const result = await ResultsRepo.getResultBySessionAndMember(sessionId, member.id);
-      const cashout = result?.cashoutCents || 0;
-      // Only calculate net result if cashout has been entered (> 0)
-      const netResult = cashout > 0 ? cashout - totalBuyIns : 0;
-
-      data.push({
-        memberId: member.id,
-        memberName: member.name,
-        totalBuyIns,
-        cashout,
-        netResult,
-      });
-    }
-
-    setMemberData(data);
-  };
-
-  const loadPendingBuyIns = async () => {
-    try {
-      const pending = await BuyInsRepo.getPendingBuyIns(sessionId);
-      const pendingWithNames = pending.map(buyIn => {
-        const member = members.find(m => m.id === buyIn.memberId);
-        return {
-          ...buyIn,
-          memberName: member?.name || 'Unknown',
-        };
-      });
-      setPendingBuyIns(pendingWithNames);
-    } catch (error) {
-      console.error('Error loading pending buy-ins:', error);
-    }
-  };
-
-  const loadBuyInHistory = () => {
-    try {
-      // Map all buy-ins with member names and approver names
-      const historyWithNames = buyIns.map(buyIn => {
-        const member = members.find(m => m.id === buyIn.memberId);
-        const approver = buyIn.approvedBy ? members.find(m => m.userId === buyIn.approvedBy) : null;
-        return {
-          ...buyIn,
-          memberName: member?.name || 'Unknown',
-          approverName: approver?.name || (buyIn.approvedBy ? 'Unknown' : null),
-        };
-      });
-      // Sort by creation date, newest first
-      const sorted = historyWithNames.sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-      setBuyInHistory(sorted);
-    } catch (error) {
-      console.error('Error loading buy-in history:', error);
-    }
-  };
-
-  const loadSettlements = async () => {
-    try {
-      const settlements = await SettlementsRepo.getSettlementsBySessionId(sessionId);
-      setSavedSettlements(settlements);
-    } catch (error) {
-      console.error('Error loading settlements:', error);
-    }
-  };
-
-  const handleApproveBuyIn = async (buyInId: string) => {
-    if (!user?.id) return;
-
-    try {
-      setActionLoading(true);
-      await BuyInsRepo.approveBuyIn(buyInId, user.id);
-      await loadPendingBuyIns();
-      await loadMemberData();
-      Alert.alert('Success', 'Buy-in approved!');
-    } catch (error) {
-      console.error('Error approving buy-in:', error);
-      Alert.alert('Error', 'Failed to approve buy-in');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleRejectBuyIn = async (buyInId: string) => {
-    Alert.alert(
-      'Reject Buy-in',
-      'Are you sure you want to reject this buy-in?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await BuyInsRepo.deleteBuyIn(buyInId);
-              await loadPendingBuyIns();
-              Alert.alert('Success', 'Buy-in rejected');
-            } catch (error) {
-              console.error('Error rejecting buy-in:', error);
-              Alert.alert('Error', 'Failed to reject buy-in');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const toggleBuyInSelection = (buyInId: string) => {
-    setSelectedBuyInIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(buyInId)) {
-        newSet.delete(buyInId);
-      } else {
-        newSet.add(buyInId);
-      }
-      return newSet;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedBuyInIds.size === pendingBuyIns.length) {
-      setSelectedBuyInIds(new Set());
-    } else {
-      setSelectedBuyInIds(new Set(pendingBuyIns.map(b => b.id)));
-    }
-  };
-
-  const handleBulkApprove = async () => {
-    if (selectedBuyInIds.size === 0 || !user?.id) return;
-
-    Alert.alert(
-      'Approve Selected Buy-ins',
-      `Approve ${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Approve',
-          onPress: async () => {
-            try {
-              setActionLoading(true);
-              const approvalPromises = Array.from(selectedBuyInIds).map(id =>
-                BuyInsRepo.approveBuyIn(id, user.id)
-              );
-              await Promise.all(approvalPromises);
-              setSelectedBuyInIds(new Set());
-              await loadPendingBuyIns();
-              await loadMemberData();
-              Alert.alert('Success', `${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''} approved!`);
-            } catch (error) {
-              console.error('Error bulk approving buy-ins:', error);
-              Alert.alert('Error', 'Failed to approve some buy-ins');
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleBulkReject = async () => {
-    if (selectedBuyInIds.size === 0) return;
-
-    Alert.alert(
-      'Reject Selected Buy-ins',
-      `Reject ${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setActionLoading(true);
-              const rejectionPromises = Array.from(selectedBuyInIds).map(id =>
-                BuyInsRepo.deleteBuyIn(id)
-              );
-              await Promise.all(rejectionPromises);
-              setSelectedBuyInIds(new Set());
-              await loadPendingBuyIns();
-              Alert.alert('Success', `${selectedBuyInIds.size} buy-in${selectedBuyInIds.size > 1 ? 's' : ''} rejected`);
-            } catch (error) {
-              console.error('Error bulk rejecting buy-ins:', error);
-              Alert.alert('Error', 'Failed to reject some buy-ins');
-            } finally {
-              setActionLoading(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const validateTotals = (): { valid: boolean; totalBuyIns: number; totalCashouts: number } => {
+  const validateTotals = (): {
+    valid: boolean;
+    totalBuyIns: number;
+    totalCashouts: number;
+  } => {
     const totalBuyIns = memberData.reduce((sum, d) => sum + d.totalBuyIns, 0);
     const totalCashouts = memberData.reduce((sum, d) => sum + d.cashout, 0);
-    const hasCashouts = memberData.some(d => d.cashout > 0);
+    const hasCashouts = memberData.some((d) => d.cashout > 0);
 
     return {
       valid: !hasCashouts || totalBuyIns === totalCashouts,
@@ -315,7 +107,7 @@ export default function SessionDetailsScreen() {
     }
 
     // Find the member object to check userId
-    const member = members.find(m => m.id === memberId);
+    const member = members.find((m) => m.id === memberId);
     if (!member || !user) {
       return false;
     }
@@ -329,59 +121,55 @@ export default function SessionDetailsScreen() {
     return true;
   };
 
-  const handleAddBuyIn = async () => {
-    if (!selectedMemberId || !buyInAmount.trim()) return;
-
-    const amount = parseFloat(buyInAmount);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid buy-in amount');
-      return;
-    }
+  const handleAddBuyIn = async (amount: number) => {
+    if (!selectedMemberId) return;
 
     try {
       setActionLoading(true);
-      await addBuyIn(selectedMemberId, Math.round(amount * 100)); // Convert to cents
-      setBuyInAmount('');
+      await addBuyInToDb(selectedMemberId, Math.round(amount * 100)); // Convert to cents
       setAddBuyInDialogVisible(false);
-      await loadMemberData();
-      Alert.alert('Success', 'Buy-in added!');
+      await reloadSessionData();
     } catch (error) {
-      Alert.alert('Error', 'Failed to add buy-in');
+      handleError(error, {
+        title: 'Failed to Add Buy-in',
+        message: 'Could not add buy-in. Please try again.',
+      });
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleSetCashout = async () => {
-    if (!selectedMemberId || !cashoutAmount.trim()) return;
-
-    const amount = parseFloat(cashoutAmount);
-    if (isNaN(amount) || amount < 0) {
-      Alert.alert('Invalid Amount', 'Please enter a valid cashout amount');
-      return;
-    }
+  const handleSetCashout = async (amount: number) => {
+    if (!selectedMemberId) return;
 
     try {
       setActionLoading(true);
       const amountCents = Math.round(amount * 100);
-      const totalBuyIns = await BuyInsRepo.getTotalBuyInsByMember(sessionId, selectedMemberId);
+      const totalBuyIns = await BuyInsRepo.getTotalBuyInsByMember(
+        sessionId,
+        selectedMemberId
+      );
       const netCents = amountCents - totalBuyIns;
 
       // Check if result already exists
-      const existingResult = await ResultsRepo.getResultBySessionAndMember(sessionId, selectedMemberId);
-      
+      const existingResult = await ResultsRepo.getResultBySessionAndMember(
+        sessionId,
+        selectedMemberId
+      );
+
       if (existingResult) {
         await ResultsRepo.updateResult(existingResult.id, netCents, amountCents);
       } else {
         await ResultsRepo.createResult(sessionId, selectedMemberId, netCents, amountCents);
       }
 
-      setCashoutAmount('');
       setCashoutDialogVisible(false);
-      await loadMemberData();
-      Alert.alert('Success', 'Cashout recorded!');
+      await reloadSessionData();
     } catch (error) {
-      Alert.alert('Error', 'Failed to record cashout');
+      handleError(error, {
+        title: 'Failed to Set Cashout',
+        message: 'Could not set cashout. Please try again.',
+      });
     } finally {
       setActionLoading(false);
     }
@@ -389,13 +177,11 @@ export default function SessionDetailsScreen() {
 
   const openAddBuyInDialog = (memberId: string) => {
     setSelectedMemberId(memberId);
-    setBuyInAmount('');
     setAddBuyInDialogVisible(true);
   };
 
   const openCashoutDialog = (memberId: string, currentCashout: number) => {
     setSelectedMemberId(memberId);
-    setCashoutAmount(currentCashout > 0 ? (currentCashout / 100).toString() : '');
     setCashoutDialogVisible(true);
   };
 
@@ -407,10 +193,10 @@ export default function SessionDetailsScreen() {
       Alert.alert(
         'Validation Error',
         `Total buy-ins and cashouts do not match!\n\n` +
-        `Total Buy-ins: ${formatCents(validation.totalBuyIns)}\n` +
-        `Total Cashouts: ${formatCents(validation.totalCashouts)}\n` +
-        `Difference: ${formatCents(Math.abs(difference))}\n\n` +
-        `Please verify all cashout amounts before completing the session.`,
+          `Total Buy-ins: ${formatCents(validation.totalBuyIns)}\n` +
+          `Total Cashouts: ${formatCents(validation.totalCashouts)}\n` +
+          `Difference: ${formatCents(Math.abs(difference))}\n\n` +
+          `Please verify all cashout amounts before completing the session.`,
         [{ text: 'OK' }]
       );
       return;
@@ -433,15 +219,15 @@ export default function SessionDetailsScreen() {
       setActionLoading(true);
 
       // Save settlements to database before marking session as completed
-      console.log('💾 Saving settlements to database...');
+      logger.info('Saving settlements to database');
       if (settlements.length > 0) {
         // Find member IDs for each settlement
         const settlementPromises = settlements.map(async (settlement) => {
-          const fromMember = members.find(m => m.name === settlement.fromMemberName);
-          const toMember = members.find(m => m.name === settlement.toMemberName);
+          const fromMember = members.find((m) => m.name === settlement.fromMemberName);
+          const toMember = members.find((m) => m.name === settlement.toMemberName);
 
           if (!fromMember || !toMember) {
-            console.error('Could not find member IDs for settlement:', settlement);
+            logger.error('Could not find member IDs for settlement', settlement);
             return;
           }
 
@@ -454,21 +240,21 @@ export default function SessionDetailsScreen() {
         });
 
         await Promise.all(settlementPromises);
-        console.log('✅ Settlements saved to database');
+        logger.info('Settlements saved to database');
       }
 
       // Send notification to all session members (fire and forget)
-      NotificationManager.notifySessionCompleted(sessionId)
-        .catch(err => console.error('Failed to send completion notification:', err));
+      NotificationManager.notifySessionCompleted(sessionId).catch((err) =>
+        logger.error('Failed to send completion notification', err)
+      );
 
-      console.log('🔄 Updating session status to completed...');
+      logger.info('Updating session status to completed');
       await SessionsRepo.updateSessionStatus(sessionId, 'completed');
-      console.log('✅ Session status updated');
+      logger.info('Session status updated');
 
       // Force immediate refresh of sessions list
-      console.log('🔄 Refreshing sessions list...');
+      logger.info('Refreshing sessions list');
       refreshSessions();
-      console.log('✅ Sessions refresh triggered');
 
       setSettlementDialogVisible(false);
 
@@ -476,31 +262,10 @@ export default function SessionDetailsScreen() {
       navigation.goBack();
       Alert.alert('Success', 'Session marked as completed!');
     } catch (error) {
-      console.error('Error completing session:', error);
-      Alert.alert('Error', 'Failed to complete session');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleToggleSettlementPaid = async (settlementId: string, currentPaidStatus: boolean) => {
-    if (!user?.id) return;
-
-    try {
-      setActionLoading(true);
-      if (currentPaidStatus) {
-        // Mark as unpaid
-        await SettlementsRepo.markSettlementAsUnpaid(settlementId);
-      } else {
-        // Mark as paid
-        await SettlementsRepo.markSettlementAsPaid(settlementId, user.id);
-      }
-      // Reload settlements
-      await loadSettlements();
-      Alert.alert('Success', currentPaidStatus ? 'Marked as unpaid' : 'Marked as paid');
-    } catch (error) {
-      console.error('Error toggling settlement status:', error);
-      Alert.alert('Error', 'Failed to update settlement status');
+      handleError(error, {
+        title: 'Failed to Complete Session',
+        message: 'Could not complete session. Please try again.',
+      });
     } finally {
       setActionLoading(false);
     }
@@ -515,6 +280,8 @@ export default function SessionDetailsScreen() {
   }
 
   const selectedMember = members.find((m) => m.id === selectedMemberId);
+  const selectedMemberCashout =
+    memberData.find((m) => m.memberId === selectedMemberId)?.cashout || 0;
 
   return (
     <View style={styles.container}>
@@ -530,127 +297,25 @@ export default function SessionDetailsScreen() {
           </Text>
         </View>
 
-        {/* Notification Banner for Pending Buy-ins */}
-        {isAdmin && pendingBuyIns.length > 0 && session.status !== 'completed' && (
-          <View style={styles.notificationBanner}>
-            <View style={styles.notificationContent}>
-              <View style={styles.notificationIconContainer}>
-                <Text style={styles.notificationIcon}>⚠️</Text>
-              </View>
-              <View style={styles.notificationTextContainer}>
-                <Text style={styles.notificationTitle}>
-                  {pendingBuyIns.length} Pending Buy-in{pendingBuyIns.length > 1 ? 's' : ''}
-                </Text>
-                <Text style={styles.notificationSubtext}>
-                  Review and approve buy-ins below
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        <Divider style={styles.divider} />
-
-        {/* Pending Buy-ins Section - Only for Admins */}
-        {isAdmin && pendingBuyIns.length > 0 && session.status !== 'completed' && (
-          <>
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Pending Buy-ins ({pendingBuyIns.length})</Text>
-                <Button
-                  mode="text"
-                  onPress={toggleSelectAll}
-                  compact
-                  textColor={darkColors.accent}
-                >
-                  {selectedBuyInIds.size === pendingBuyIns.length ? 'Deselect All' : 'Select All'}
-                </Button>
-              </View>
-
-              {selectedBuyInIds.size > 0 && (
-                <View style={styles.bulkActions}>
-                  <Text style={styles.bulkActionsText}>
-                    {selectedBuyInIds.size} selected
-                  </Text>
-                  <View style={styles.bulkActionsButtons}>
-                    <Button
-                      mode="contained"
-                      onPress={handleBulkApprove}
-                      disabled={actionLoading}
-                      buttonColor={darkColors.positive}
-                      compact
-                      icon="check-all"
-                    >
-                      Approve
-                    </Button>
-                    <Button
-                      mode="outlined"
-                      onPress={handleBulkReject}
-                      disabled={actionLoading}
-                      textColor={darkColors.negative}
-                      compact
-                      icon="close-circle-outline"
-                      style={styles.bulkRejectButton}
-                    >
-                      Reject
-                    </Button>
-                  </View>
-                </View>
-              )}
-
-              <Text style={styles.pendingHint}>
-                {selectedBuyInIds.size > 0 ? 'Select buy-ins to approve or reject in bulk' : 'Tap checkboxes to select multiple buy-ins'}
-              </Text>
-
-              {pendingBuyIns.map((buyIn) => (
-                <Card key={buyIn.id} style={styles.pendingCard}>
-                  <Card.Content>
-                    <View style={styles.pendingBuyInRow}>
-                      <Checkbox
-                        status={selectedBuyInIds.has(buyIn.id) ? 'checked' : 'unchecked'}
-                        onPress={() => toggleBuyInSelection(buyIn.id)}
-                        color={darkColors.accent}
-                      />
-                      <View style={styles.pendingBuyInInfo}>
-                        <Text style={styles.pendingMemberName}>{buyIn.memberName}</Text>
-                        <Text style={styles.pendingAmount}>{formatCents(buyIn.amountCents)}</Text>
-                        <Text style={styles.pendingTimestamp}>{formatDate(buyIn.createdAt)}</Text>
-                      </View>
-                      <View style={styles.pendingActions}>
-                        <Button
-                          mode="contained"
-                          onPress={() => handleApproveBuyIn(buyIn.id)}
-                          disabled={actionLoading}
-                          buttonColor={darkColors.positive}
-                          compact
-                          style={styles.approveButton}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          mode="outlined"
-                          onPress={() => handleRejectBuyIn(buyIn.id)}
-                          disabled={actionLoading}
-                          textColor={darkColors.negative}
-                          compact
-                          style={styles.rejectButton}
-                        >
-                          Reject
-                        </Button>
-                      </View>
-                    </View>
-                  </Card.Content>
-                </Card>
-              ))}
-            </View>
-            <Divider style={styles.divider} />
-          </>
+        {/* Pending Approvals Component */}
+        {isAdmin && session.status !== 'completed' && (
+          <PendingApprovals
+            pendingBuyIns={pendingBuyIns}
+            selectedBuyInIds={selectedBuyInIds}
+            isLoading={approvalsLoading}
+            onToggleSelection={toggleSelection}
+            onToggleSelectAll={toggleSelectAll}
+            onApproveSingle={approveSingle}
+            onRejectSingle={rejectSingle}
+            onBulkApprove={bulkApprove}
+            onBulkReject={bulkReject}
+          />
         )}
 
         {/* Member Data Table */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Session Details</Text>
-          
+
           {memberData.length === 0 ? (
             <Text style={styles.emptyText}>No participants data yet</Text>
           ) : (
@@ -726,23 +391,29 @@ export default function SessionDetailsScreen() {
               <Text style={styles.sectionTitle}>Buy-In History ({buyInHistory.length})</Text>
               <View style={{ height: 12 }} />
               {buyInHistory.map((buyIn) => (
-                <Card key={buyIn.id} style={[
-                  styles.historyCard,
-                  !buyIn.approved && styles.historyCardPending
-                ]}>
+                <Card
+                  key={buyIn.id}
+                  style={[styles.historyCard, !buyIn.approved && styles.historyCardPending]}
+                >
                   <Card.Content>
                     <View style={styles.historyRow}>
                       <View style={styles.historyInfo}>
                         <View style={styles.historyHeader}>
                           <Text style={styles.historyMemberName}>{buyIn.memberName}</Text>
-                          <View style={[
-                            styles.statusBadge,
-                            buyIn.approved ? styles.statusApproved : styles.statusPending
-                          ]}>
-                            <Text style={[
-                              styles.statusText,
-                              buyIn.approved ? styles.statusTextApproved : styles.statusTextPending
-                            ]}>
+                          <View
+                            style={[
+                              styles.statusBadge,
+                              buyIn.approved ? styles.statusApproved : styles.statusPending,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.statusText,
+                                buyIn.approved
+                                  ? styles.statusTextApproved
+                                  : styles.statusTextPending,
+                              ]}
+                            >
                               {buyIn.approved ? '✓ Approved' : '⏱ Pending'}
                             </Text>
                           </View>
@@ -774,15 +445,20 @@ export default function SessionDetailsScreen() {
               <Text style={styles.sectionTitle}>Settlements ({savedSettlements.length})</Text>
               <View style={{ height: 12 }} />
               {savedSettlements.map((settlement) => {
-                const fromMember = members.find(m => m.id === settlement.fromMemberId);
-                const toMember = members.find(m => m.id === settlement.toMemberId);
-                const paidByMember = settlement.paidBy ? members.find(m => m.userId === settlement.paidBy) : null;
+                const fromMember = members.find((m) => m.id === settlement.fromMemberId);
+                const toMember = members.find((m) => m.id === settlement.toMemberId);
+                const paidByMember = settlement.paidBy
+                  ? members.find((m) => m.userId === settlement.paidBy)
+                  : null;
 
                 return (
-                  <Card key={settlement.id} style={[
-                    styles.historyCard,
-                    !settlement.paid && styles.historyCardPending
-                  ]}>
+                  <Card
+                    key={settlement.id}
+                    style={[
+                      styles.historyCard,
+                      !settlement.paid && styles.historyCardPending,
+                    ]}
+                  >
                     <Card.Content>
                       <View style={styles.historyRow}>
                         <View style={styles.historyInfo}>
@@ -790,14 +466,20 @@ export default function SessionDetailsScreen() {
                             <Text style={styles.historyMemberName}>
                               {fromMember?.name || 'Unknown'} → {toMember?.name || 'Unknown'}
                             </Text>
-                            <View style={[
-                              styles.statusBadge,
-                              settlement.paid ? styles.statusApproved : styles.statusPending
-                            ]}>
-                              <Text style={[
-                                styles.statusText,
-                                settlement.paid ? styles.statusTextApproved : styles.statusTextPending
-                              ]}>
+                            <View
+                              style={[
+                                styles.statusBadge,
+                                settlement.paid ? styles.statusApproved : styles.statusPending,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.statusText,
+                                  settlement.paid
+                                    ? styles.statusTextApproved
+                                    : styles.statusTextPending,
+                                ]}
+                              >
                                 {settlement.paid ? '✓ Paid' : '⏱ Unpaid'}
                               </Text>
                             </View>
@@ -816,11 +498,13 @@ export default function SessionDetailsScreen() {
                           )}
                         </View>
                         <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={styles.historyAmount}>{formatCents(settlement.amountCents)}</Text>
+                          <Text style={styles.historyAmount}>
+                            {formatCents(settlement.amountCents)}
+                          </Text>
                           <Button
                             mode={settlement.paid ? 'outlined' : 'contained'}
-                            onPress={() => handleToggleSettlementPaid(settlement.id, settlement.paid)}
-                            disabled={actionLoading}
+                            onPress={() => togglePaidStatus(settlement.id, settlement.paid)}
+                            disabled={settlementsLoading}
                             compact
                             style={{ marginTop: spacing.xs }}
                             buttonColor={settlement.paid ? undefined : darkColors.positive}
@@ -852,96 +536,24 @@ export default function SessionDetailsScreen() {
         )}
       </ScrollView>
 
-      {/* Add Buy-in Dialog */}
-      <Portal>
-        <Dialog visible={addBuyInDialogVisible} onDismiss={() => setAddBuyInDialogVisible(false)}>
-          <Dialog.Title>Add Buy-in</Dialog.Title>
-          <Dialog.Content>
-            <Text style={styles.dialogText}>
-              Adding buy-in for: {selectedMember?.name}
-            </Text>
+      {/* Buy-in Dialog Component */}
+      <BuyInDialog
+        visible={addBuyInDialogVisible}
+        memberName={selectedMember?.name || ''}
+        isLoading={actionLoading}
+        onDismiss={() => setAddBuyInDialogVisible(false)}
+        onSubmit={handleAddBuyIn}
+      />
 
-            {/* Preset Amount Buttons */}
-            <Text style={styles.presetLabel}>Quick amounts:</Text>
-            <View style={styles.presetButtonsContainer}>
-              <Button
-                mode="outlined"
-                onPress={() => setBuyInAmount('50')}
-                style={[styles.presetButton, buyInAmount === '50' && styles.presetButtonSelected]}
-                compact
-              >
-                $50
-              </Button>
-              <Button
-                mode="outlined"
-                onPress={() => setBuyInAmount('100')}
-                style={[styles.presetButton, buyInAmount === '100' && styles.presetButtonSelected]}
-                compact
-              >
-                $100
-              </Button>
-              <Button
-                mode="outlined"
-                onPress={() => setBuyInAmount('200')}
-                style={[styles.presetButton, buyInAmount === '200' && styles.presetButtonSelected]}
-                compact
-              >
-                $200
-              </Button>
-            </View>
-
-            {/* Custom Amount Input */}
-            <TextInput
-              label="Custom Amount"
-              value={buyInAmount}
-              onChangeText={setBuyInAmount}
-              mode="outlined"
-              placeholder="Enter custom amount"
-              keyboardType="numeric"
-              left={<TextInput.Affix text="$" />}
-              style={styles.customAmountInput}
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setAddBuyInDialogVisible(false)} disabled={actionLoading}>
-              Cancel
-            </Button>
-            <Button onPress={handleAddBuyIn} loading={actionLoading} disabled={actionLoading}>
-              Add
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
-
-      {/* Set Cashout Dialog */}
-      <Portal>
-        <Dialog visible={cashoutDialogVisible} onDismiss={() => setCashoutDialogVisible(false)}>
-          <Dialog.Title>Set Cashout</Dialog.Title>
-          <Dialog.Content>
-            <Text style={styles.dialogText}>
-              Cashout amount for: {selectedMember?.name}
-            </Text>
-            <TextInput
-              label="Cashout Amount"
-              value={cashoutAmount}
-              onChangeText={setCashoutAmount}
-              mode="outlined"
-              placeholder="250"
-              keyboardType="numeric"
-              left={<TextInput.Affix text="$" />}
-              autoFocus
-            />
-          </Dialog.Content>
-          <Dialog.Actions>
-            <Button onPress={() => setCashoutDialogVisible(false)} disabled={actionLoading}>
-              Cancel
-            </Button>
-            <Button onPress={handleSetCashout} loading={actionLoading} disabled={actionLoading}>
-              Save
-            </Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      {/* Cashout Dialog Component */}
+      <CashoutDialog
+        visible={cashoutDialogVisible}
+        memberName={selectedMember?.name || ''}
+        currentCashout={selectedMemberCashout}
+        isLoading={actionLoading}
+        onDismiss={() => setCashoutDialogVisible(false)}
+        onSubmit={handleSetCashout}
+      />
 
       {/* Settlement Dialog */}
       <Modal
@@ -967,7 +579,9 @@ export default function SessionDetailsScreen() {
                     {settlements.map((settlement, index) => (
                       <View key={index} style={styles.settlementItem}>
                         <View style={styles.settlementRow}>
-                          <Text style={styles.settlementFrom}>{settlement.fromMemberName}</Text>
+                          <Text style={styles.settlementFrom}>
+                            {settlement.fromMemberName}
+                          </Text>
                           <Text style={styles.settlementArrow}>→</Text>
                           <Text style={styles.settlementTo}>{settlement.toMemberName}</Text>
                         </View>
@@ -1062,12 +676,6 @@ const styles = StyleSheet.create({
   historySection: {
     paddingTop: spacing.xl,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -1085,35 +693,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: spacing.md,
     textAlign: 'center',
-  },
-  card: {
-    backgroundColor: darkColors.card,
-    marginBottom: spacing.sm,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  memberName: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: darkColors.textPrimary,
-  },
-  timestamp: {
-    fontSize: 12,
-    color: darkColors.textMuted,
-    marginTop: 2,
-  },
-  amount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: darkColors.accent,
-  },
-  dialogText: {
-    fontSize: 14,
-    color: darkColors.textMuted,
-    marginBottom: spacing.md,
   },
   completeButton: {
     backgroundColor: darkColors.positive,
@@ -1208,84 +787,6 @@ const styles = StyleSheet.create({
   settlementConfirmButton: {
     minWidth: 120,
   },
-  pendingCard: {
-    backgroundColor: darkColors.card,
-    marginBottom: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: darkColors.warning,
-  },
-  pendingBuyInRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  pendingBuyInInfo: {
-    flex: 1,
-  },
-  pendingMemberName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: darkColors.textPrimary,
-    marginBottom: 4,
-  },
-  pendingAmount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: darkColors.accent,
-    marginBottom: 4,
-  },
-  pendingTimestamp: {
-    fontSize: 12,
-    color: darkColors.textMuted,
-  },
-  pendingActions: {
-    flexDirection: 'column',
-    gap: spacing.xs,
-    marginLeft: spacing.md,
-  },
-  approveButton: {
-    minWidth: 90,
-  },
-  rejectButton: {
-    minWidth: 90,
-    borderColor: darkColors.negative,
-  },
-  pendingHint: {
-    fontSize: 13,
-    color: darkColors.textMuted,
-    marginBottom: spacing.md,
-    fontStyle: 'italic',
-  },
-  notificationBanner: {
-    backgroundColor: darkColors.warning + '20', // 20% opacity
-    borderLeftWidth: 4,
-    borderLeftColor: darkColors.warning,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  notificationContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  notificationIconContainer: {
-    marginRight: spacing.md,
-  },
-  notificationIcon: {
-    fontSize: 24,
-  },
-  notificationTextContainer: {
-    flex: 1,
-  },
-  notificationTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: darkColors.warning,
-    marginBottom: 2,
-  },
-  notificationSubtext: {
-    fontSize: 13,
-    color: darkColors.textMuted,
-  },
   historyCard: {
     backgroundColor: darkColors.card,
     marginBottom: spacing.lg,
@@ -1353,50 +854,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: darkColors.accent,
   },
-  bulkActions: {
-    backgroundColor: darkColors.surface,
-    borderRadius: 8,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  bulkActionsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: darkColors.textPrimary,
-  },
-  bulkActionsButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  bulkRejectButton: {
-    borderColor: darkColors.negative,
-  },
-  presetLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: darkColors.textPrimary,
-    marginBottom: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  presetButtonsContainer: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  presetButton: {
-    flex: 1,
-    borderColor: darkColors.border,
-  },
-  presetButtonSelected: {
-    borderColor: darkColors.accent,
-    borderWidth: 2,
-    backgroundColor: darkColors.accent + '20',
-  },
-  customAmountInput: {
-    marginTop: spacing.xs,
-  },
 });
-
