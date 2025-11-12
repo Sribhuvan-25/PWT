@@ -3,6 +3,7 @@ import { getSupabase } from '@/db/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import * as ManualAdjustmentsRepo from '@/db/repositories/manualAdjustments';
 import { ManualAdjustment } from '@/types';
+import { logger } from '@/utils/logger';
 
 export interface SessionHistory {
   sessionId: string;
@@ -127,7 +128,7 @@ export function usePlayerStats() {
       });
       setHasLoadedOnce(true);
     } catch (err) {
-      console.error('Error loading player stats:', err);
+      logger.error('Error loading player stats:', err);
       setError(err instanceof Error ? err.message : 'Failed to load stats');
     } finally {
       setLoading(false);

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { MemberBalance, SettleUpTransaction } from '@/types';
 import * as ResultsRepo from '@/db/repositories/results';
 import { calculateSettleUpTransactions } from '@/utils/settleUp';
+import { logger } from '@/utils/logger';
 
 export function useBalances(groupId: string | null) {
   const [balances, setBalances] = useState<MemberBalance[]>([]);
@@ -26,7 +27,7 @@ export function useBalances(groupId: string | null) {
       const transactions = calculateSettleUpTransactions(data);
       setSettleUp(transactions);
     } catch (err) {
-      console.error('Error loading balances:', err);
+      logger.error('Error loading balances:', err);
       setError(err instanceof Error ? err.message : 'Failed to load balances');
     } finally {
       setLoading(false);

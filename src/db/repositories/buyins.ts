@@ -1,6 +1,7 @@
 import { getSupabase } from '../supabase';
 import { BuyIn } from '@/types';
 import * as NotificationManager from '@/services/notificationManager';
+import { logger } from '@/utils/logger';
 
 // Helper to convert Supabase snake_case to camelCase
 function mapSupabaseBuyIn(row: any): BuyIn {
@@ -49,7 +50,7 @@ export async function createBuyIn(
       sessionId,
       member.name,
       amountCents
-    ).catch(err => console.error('Failed to send buy-in notification:', err));
+    ).catch(err => logger.error('Failed to send buy-in notification:', err));
   }
 
   return buyIn;
@@ -142,7 +143,7 @@ export async function approveBuyIn(id: string, userId: string): Promise<BuyIn> {
       buyIn.sessionId,
       buyInData.members.user_id,
       buyIn.amountCents
-    ).catch(err => console.error('Failed to send approval notification:', err));
+    ).catch(err => logger.error('Failed to send approval notification:', err));
   }
 
   return buyIn;

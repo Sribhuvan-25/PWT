@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { logger } from '@/utils/logger';
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -22,7 +23,7 @@ export interface PushNotificationToken {
  */
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!Device.isDevice) {
-    console.log('Push notifications only work on physical devices');
+    logger.info('Push notifications only work on physical devices');
     return false;
   }
 
@@ -35,7 +36,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 
   if (finalStatus !== 'granted') {
-    console.log('Failed to get push notification permissions');
+    logger.warn('Failed to get push notification permissions');
     return false;
   }
 
@@ -57,7 +58,7 @@ export async function registerForPushNotifications(): Promise<PushNotificationTo
     const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
 
     if (!projectId) {
-      console.error('Project ID not found. Make sure your app.json is configured correctly.');
+      logger.error('Project ID not found. Make sure your app.json is configured correctly.');
       return null;
     }
 
@@ -65,7 +66,7 @@ export async function registerForPushNotifications(): Promise<PushNotificationTo
       projectId,
     });
 
-    console.log('Push token obtained:', tokenData.data);
+    logger.info('Push token obtained:', tokenData.data);
 
     // Set up notification channel for Android
     if (Platform.OS === 'android') {
@@ -100,7 +101,7 @@ export async function registerForPushNotifications(): Promise<PushNotificationTo
       platform: Platform.OS as 'ios' | 'android',
     };
   } catch (error) {
-    console.error('Error registering for push notifications:', error);
+    logger.error('Error registering for push notifications:', error);
     return null;
   }
 }
@@ -157,10 +158,10 @@ export async function sendPushNotification(
     });
 
     const result = await response.json();
-    console.log('Push notification sent:', result);
+    logger.info('Push notification sent:', result);
     return true;
   } catch (error) {
-    console.error('Error sending push notification:', error);
+    logger.error('Error sending push notification:', error);
     return false;
   }
 }

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { User } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as MembersRepo from '@/db/repositories/members';
+import { logger } from '@/utils/logger';
 
 interface AuthStore {
   user: User | null;
@@ -27,7 +28,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const currentUser = get().user;
     if (!currentUser) return;
 
-    console.log('🔄 Updating display name to:', displayName);
+    logger.info('🔄 Updating display name to:', displayName);
 
     const updatedUser = { ...currentUser, displayName };
     set({ user: updatedUser });
@@ -35,18 +36,18 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     // Persist to AsyncStorage
     try {
       await AsyncStorage.setItem('user_display_name', displayName);
-      console.log('✅ Display name saved to AsyncStorage');
+      logger.info('✅ Display name saved to AsyncStorage');
     } catch (error) {
-      console.error('❌ Failed to save display name:', error);
+      logger.error('❌ Failed to save display name:', error);
     }
 
     // Update all member entries in sessions for this user
     if (currentUser.id) {
       try {
         await MembersRepo.updateMemberNameByUserId(currentUser.id, displayName);
-        console.log('✅ Updated member names across all sessions');
+        logger.info('✅ Updated member names across all sessions');
       } catch (error) {
-        console.error('❌ Failed to update member names in sessions:', error);
+        logger.error('❌ Failed to update member names in sessions:', error);
         // Don't throw - display name update in local state succeeded
       }
     }

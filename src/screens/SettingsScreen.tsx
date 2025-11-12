@@ -4,6 +4,7 @@ import { Text, List, Button, TextInput, Portal, Dialog } from 'react-native-pape
 import { useAuthStore } from '@/stores/authStore';
 import { signOut } from '@/services/auth';
 import { darkColors, spacing } from '@/utils/theme';
+import { logger } from '@/utils/logger';
 
 export default function SettingsScreen() {
   const { user, setUser, updateDisplayName } = useAuthStore();
@@ -24,7 +25,7 @@ export default function SettingsScreen() {
               await signOut();
               setUser(null);
             } catch (error) {
-              console.error('Error signing out:', error);
+              logger.error('Error signing out:', error);
               // Still clear local state even if server sign-out fails
               setUser(null);
             }
@@ -45,7 +46,7 @@ export default function SettingsScreen() {
       setDisplayNameDialogVisible(false);
       Alert.alert('Success', 'Display name updated successfully!');
     } catch (error) {
-      console.error('Error updating display name:', error);
+      logger.error('Error updating display name:', error);
       Alert.alert('Error', 'Failed to update display name');
     }
   };

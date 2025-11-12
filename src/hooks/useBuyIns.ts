@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BuyIn } from '@/types';
 import * as BuyInsRepo from '@/db/repositories/buyins';
+import { logger } from '@/utils/logger';
 
 export function useBuyIns(sessionId: string | null) {
   const [buyIns, setBuyIns] = useState<BuyIn[]>([]);
@@ -20,7 +21,7 @@ export function useBuyIns(sessionId: string | null) {
       const data = await BuyInsRepo.getBuyInsBySessionId(sessionId);
       setBuyIns(data);
     } catch (err) {
-      console.error('Error loading buy-ins:', err);
+      logger.error('Error loading buy-ins:', err);
       setError(err instanceof Error ? err.message : 'Failed to load buy-ins');
     } finally {
       setLoading(false);

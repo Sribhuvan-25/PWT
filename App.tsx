@@ -26,13 +26,17 @@ import { Text } from 'react-native';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import OfflineBanner from './src/components/OfflineBanner';
 import { logger } from './src/utils/logger';
+import { initSentry } from './src/utils/sentry';
+
+// Initialize Sentry crash reporting
+initSentry();
 
 export default function App() {
   const [appInitialized, setAppInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { setUser, user } = useAuthStore();
-  const notificationListener = useRef<Notifications.Subscription>();
-  const responseListener = useRef<Notifications.Subscription>();
+  const notificationListener = useRef<Notifications.Subscription | undefined>(undefined);
+  const responseListener = useRef<Notifications.Subscription | undefined>(undefined);
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -51,6 +55,11 @@ export default function App() {
         const currentUser = await getCurrentUser();
         setUser(currentUser);
 
+        // Set user context for crash reporting
+        if (currentUser) {
+          logger.setUser(currentUser.id, currentUser.email);
+        }
+
         setAppInitialized(true);
       } catch (err) {
         logger.error('App initialization failed', err);
@@ -63,6 +72,13 @@ export default function App() {
     // Set up auth state listener
     const unsubscribe = onAuthStateChange((user) => {
       setUser(user);
+
+      // Update user context for crash reporting
+      if (user) {
+        logger.setUser(user.id, user.email);
+      } else {
+        logger.clearUser();
+      }
     });
 
     return () => {
@@ -74,6 +90,8 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
+    const currentUser = user; // Capture user to avoid null issues in async function
+
     async function setupPushNotifications() {
       try {
         // Register for push notifications
@@ -82,7 +100,7 @@ export default function App() {
         if (tokenData) {
           // Save token to database
           await PushTokensRepo.savePushToken(
-            user.id,
+            currentUser.id,
             tokenData.token,
             tokenData.platform
           );

@@ -1,5 +1,6 @@
 import { getSupabase } from '../supabase';
 import { Session } from '@/types';
+import { logger } from '@/utils/logger';
 
 // Helper to convert Supabase snake_case to camelCase
 function mapSupabaseSession(row: any): Session {
@@ -64,7 +65,7 @@ export async function createSession(
           joined_at: new Date().toISOString(),
         });
     } catch (err) {
-      console.error('Error adding creator to session_members:', err);
+      logger.error('Error adding creator to session_members:', err);
       // Continue even if this fails (e.g., for non-UUID user IDs)
     }
   }
@@ -81,7 +82,7 @@ export async function createSession(
           created_at: new Date().toISOString(),
         });
     } catch (err) {
-      console.error('Error adding creator to members:', err);
+      logger.error('Error adding creator to members:', err);
       // If member creation fails, throw error as this is critical
       throw err;
     }
@@ -106,7 +107,7 @@ export async function getAllSessions(): Promise<Session[]> {
 export async function getSessionByJoinCode(joinCode: string): Promise<Session | null> {
   const supabase = getSupabase();
 
-  console.log('🔍 Looking up join code:', joinCode, 'uppercase:', joinCode.toUpperCase());
+  logger.info('🔍 Looking up join code:', joinCode, 'uppercase:', joinCode.toUpperCase());
 
   const { data, error } = await supabase
     .from('sessions')
@@ -115,14 +116,14 @@ export async function getSessionByJoinCode(joinCode: string): Promise<Session | 
     .is('deleted_at', null) // Don't allow joining deleted sessions
     .single();
 
-  console.log('Join code lookup result:', { found: !!data, error: error?.message });
+  logger.info('Join code lookup result:', { found: !!data, error: error?.message });
 
   if (error) {
     if (error.code === 'PGRST116') {
-      console.log('❌ Join code not found in database');
+      logger.warn('❌ Join code not found in database');
       return null; // Not found
     }
-    console.error('Join code lookup error:', error);
+    logger.error('Join code lookup error:', error);
     throw error;
   }
   return data ? mapSupabaseSession(data) : null;
@@ -173,17 +174,17 @@ export async function updateSession(
 ): Promise<void> {
   const supabase = getSupabase();
   
-  console.log('🔄 Updating session:', id, 'with updates:', updates);
+  logger.info('🔄 Updating session:', id, 'with updates:', updates);
   const { error } = await supabase
     .from('sessions')
     .update(updates)
     .eq('id', id);
 
   if (error) {
-    console.error('❌ Error updating session:', error);
+    logger.error('❌ Error updating session:', error);
     throw error;
   }
-  console.log('✅ Session updated successfully');
+  logger.info('✅ Session updated successfully');
 }
 
 export async function deleteSession(id: string): Promise<void> {

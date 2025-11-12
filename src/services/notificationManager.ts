@@ -3,6 +3,7 @@ import * as PushTokensRepo from '@/db/repositories/pushTokens';
 import * as SessionsRepo from '@/db/repositories/sessions';
 import * as MembersRepo from '@/db/repositories/members';
 import { getSupabase } from '@/db/supabase';
+import { logger } from '@/utils/logger';
 
 /**
  * Send notification to session admins when a new buy-in is requested
@@ -27,7 +28,7 @@ export async function notifyBuyInRequest(
     const adminTokens = await PushTokensRepo.getSessionAdminPushTokens(sessionId);
 
     if (adminTokens.length === 0) {
-      console.log('No admin push tokens found for session:', sessionId);
+      logger.info('No admin push tokens found for session:', sessionId);
       return;
     }
 
@@ -50,15 +51,15 @@ export async function notifyBuyInRequest(
       ).then(success => {
         if (success) {
           // Update last used timestamp
-          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch(console.error);
+          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch((err) => logger.error('Failed to update token last used', err));
         }
       })
     );
 
     await Promise.all(promises);
-    console.log(`Sent buy-in notification to ${adminTokens.length} admin(s)`);
+    logger.info(`Sent buy-in notification to ${adminTokens.length} admin(s)`);
   } catch (error) {
-    console.error('Error sending buy-in notification:', error);
+    logger.error('Error sending buy-in notification:', error);
   }
 }
 
@@ -87,7 +88,7 @@ export async function notifyBuyInApproved(
     const memberTokens = await PushTokensRepo.getUserPushTokens(memberUserId);
 
     if (memberTokens.length === 0) {
-      console.log('No push tokens found for member:', memberUserId);
+      logger.info('No push tokens found for member:', memberUserId);
       return;
     }
 
@@ -108,15 +109,15 @@ export async function notifyBuyInApproved(
         'default'
       ).then(success => {
         if (success) {
-          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch(console.error);
+          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch((err) => logger.error('Failed to update token last used', err));
         }
       })
     );
 
     await Promise.all(promises);
-    console.log(`Sent approval notification to member`);
+    logger.info(`Sent approval notification to member`);
   } catch (error) {
-    console.error('Error sending buy-in approval notification:', error);
+    logger.error('Error sending buy-in approval notification:', error);
   }
 }
 
@@ -150,7 +151,7 @@ export async function notifyUnpaidSettlement(
     const tokens = await PushTokensRepo.getUserPushTokens(fromMember.userId);
 
     if (tokens.length === 0) {
-      console.log('No push tokens found for member:', fromMember.userId);
+      logger.info('No push tokens found for member:', fromMember.userId);
       return;
     }
 
@@ -173,15 +174,15 @@ export async function notifyUnpaidSettlement(
         'settlements'
       ).then(success => {
         if (success) {
-          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch(console.error);
+          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch((err) => logger.error('Failed to update token last used', err));
         }
       })
     );
 
     await Promise.all(promises);
-    console.log(`Sent settlement reminder`);
+    logger.info(`Sent settlement reminder`);
   } catch (error) {
-    console.error('Error sending settlement reminder:', error);
+    logger.error('Error sending settlement reminder:', error);
   }
 }
 
@@ -214,7 +215,7 @@ export async function notifySessionCompleted(sessionId: string): Promise<void> {
     const tokens = await PushTokensRepo.getPushTokensForUsers(userIds);
 
     if (tokens.length === 0) {
-      console.log('No push tokens found for session members');
+      logger.info('No push tokens found for session members');
       return;
     }
 
@@ -234,15 +235,15 @@ export async function notifySessionCompleted(sessionId: string): Promise<void> {
         'default'
       ).then(success => {
         if (success) {
-          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch(console.error);
+          PushTokensRepo.updateTokenLastUsed(tokenData.id).catch((err) => logger.error('Failed to update token last used', err));
         }
       })
     );
 
     await Promise.all(promises);
-    console.log(`Sent session completion notification to ${tokens.length} member(s)`);
+    logger.info(`Sent session completion notification to ${tokens.length} member(s)`);
   } catch (error) {
-    console.error('Error sending session completion notification:', error);
+    logger.error('Error sending session completion notification:', error);
   }
 }
 
@@ -261,7 +262,7 @@ export async function sendSettlementReminders(sessionId: string): Promise<void> 
       .eq('paid', false);
 
     if (!settlements || settlements.length === 0) {
-      console.log('No unpaid settlements found');
+      logger.info('No unpaid settlements found');
       return;
     }
 
@@ -277,6 +278,6 @@ export async function sendSettlementReminders(sessionId: string): Promise<void> 
 
     await Promise.all(promises);
   } catch (error) {
-    console.error('Error sending settlement reminders:', error);
+    logger.error('Error sending settlement reminders:', error);
   }
 }

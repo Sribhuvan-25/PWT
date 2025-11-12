@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Settlement } from '@/types';
 import * as SettlementsRepo from '@/db/repositories/settlements';
+import { logger } from '@/utils/logger';
 
 export function useSettlements(sessionId: string | null) {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
@@ -20,7 +21,7 @@ export function useSettlements(sessionId: string | null) {
       const data = await SettlementsRepo.getSettlementsBySessionId(sessionId);
       setSettlements(data);
     } catch (err) {
-      console.error('Error loading settlements:', err);
+      logger.error('Error loading settlements:', err);
       setError(err instanceof Error ? err.message : 'Failed to load settlements');
     } finally {
       setLoading(false);

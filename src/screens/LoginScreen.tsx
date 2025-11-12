@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { darkColors, spacing, typography } from '../utils/theme';
 import { signInWithGoogle } from '../services/auth';
 import { useAuthStore } from '../stores/authStore';
+import { logger } from '../utils/logger';
 
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
@@ -20,7 +21,7 @@ export default function LoginScreen() {
         setUser(user);
       }
     } catch (err) {
-      console.error('Sign in error:', err);
+      logger.error('Sign in error:', err);
       setError(err instanceof Error ? err.message : 'Failed to sign in');
     } finally {
       setLoading(false);

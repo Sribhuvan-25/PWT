@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { darkColors, spacing } from '@/utils/theme';
 import { formatDate } from '@/utils/formatters';
 import * as BuyInsRepo from '@/db/repositories/buyins';
+import { logger } from '@/utils/logger';
 
 type RootStackParamList = {
   SessionsList: undefined;
@@ -155,14 +156,14 @@ export default function SessionsScreen() {
       const counts = await BuyInsRepo.getPendingBuyInsCountBySession(user.id);
       setPendingCounts(counts);
     } catch (error) {
-      console.error('Error loading pending counts:', error);
+      logger.error('Error loading pending counts:', error);
     }
   };
 
   // Load pending counts when screen comes into focus (but don't refresh sessions)
   useEffect(() => {
     if (isFocused) {
-      console.log('📍 SessionsScreen focused');
+      logger.info('📍 SessionsScreen focused');
       loadPendingCounts();
     }
   }, [isFocused]);
@@ -201,7 +202,7 @@ export default function SessionsScreen() {
       Alert.alert('Success', `Joined "${session.name}"!`);
       navigation.navigate('SessionDetails', { sessionId: session.id });
     } catch (error) {
-      console.error('Join session error:', error);
+      logger.error('Join session error:', error);
       Alert.alert('Join Session Error', error instanceof Error ? error.message : 'Invalid code');
     }
   };

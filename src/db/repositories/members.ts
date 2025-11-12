@@ -1,5 +1,6 @@
 import { getSupabase } from '../supabase';
 import { Member } from '@/types';
+import { logger } from '@/utils/logger';
 
 // Helper to convert Supabase snake_case to camelCase
 function mapSupabaseMember(row: any): Member {
@@ -84,7 +85,7 @@ export async function deleteMember(id: string): Promise<void> {
 export async function updateMemberNameByUserId(userId: string, newName: string): Promise<void> {
   const supabase = getSupabase();
 
-  console.log('🔄 Updating all member entries for user:', userId, 'to name:', newName);
+  logger.info('🔄 Updating all member entries for user:', userId, 'to name:', newName);
 
   const { error } = await supabase
     .from('members')
@@ -92,9 +93,9 @@ export async function updateMemberNameByUserId(userId: string, newName: string):
     .eq('user_id', userId);
 
   if (error) {
-    console.error('❌ Error updating member names:', error);
+    logger.error('❌ Error updating member names:', error);
     throw error;
   }
 
-  console.log('✅ Successfully updated member names for user');
+  logger.info('✅ Successfully updated member names for user');
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Session } from '@/types';
 import * as SessionsRepo from '@/db/repositories/sessions';
 import { useAuthStore } from '@/stores/authStore';
+import { logger } from '@/utils/logger';
 
 export function useSessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -27,7 +28,7 @@ export function useSessions() {
       }
       setError(null);
 
-      console.log('🔄 Loading sessions for user:', user?.id);
+      logger.info('🔄 Loading sessions for user:', user?.id);
       // Don't clear existing sessions - keep them visible while loading
 
       // If user is authenticated with a valid UUID, only load their sessions
@@ -36,11 +37,11 @@ export function useSessions() {
         ? await SessionsRepo.getUserSessions(user.id)
         : await SessionsRepo.getAllSessions();
 
-      console.log('📊 Loaded sessions:', data.map(s => ({ id: s.id, name: s.name, status: s.status, date: s.date })));
+      logger.info('📊 Loaded sessions:', data.map(s => ({ id: s.id, name: s.name, status: s.status, date: s.date })));
       setSessions(data);
       setHasLoadedOnce(true);
     } catch (err) {
-      console.error('Error loading sessions:', err);
+      logger.error('Error loading sessions:', err);
       setError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
       setLoading(false);
@@ -84,14 +85,14 @@ export function useSessions() {
       } catch (err: any) {
         // Ignore duplicate key errors (user already in session_members)
         if (err.code !== '23505') {  // PostgreSQL unique violation
-          console.error('Error adding user to session_members:', err);
+          logger.error('Error adding user to session_members:', err);
         }
         // Continue even if this fails
       }
     }
 
     // Always create a Member entry (for the participant list)
-    console.log('👤 Current user object:', {
+    logger.info('👤 Current user object:', {
       id: user?.id,
       email: user?.email,
       displayName: user?.displayName,
@@ -101,7 +102,7 @@ export function useSessions() {
     const userName = user?.displayName || user?.name || user?.email?.split('@')[0] || 'Unknown User';
     const userId = user?.id && isValidUUID(user.id) ? user.id : null;
 
-    console.log('🔍 Checking for existing member:', { sessionId: session.id, userId, userName });
+    logger.info('🔍 Checking for existing member:', { sessionId: session.id, userId, userName });
 
     // Check if user already has a member record for this session
     const { data: existingMember } = await supabase
@@ -111,12 +112,12 @@ export function useSessions() {
       .eq('user_id', userId)
       .maybeSingle();
 
-    console.log('🔍 Existing member check:', existingMember ? 'Found' : 'Not found');
+    logger.info('🔍 Existing member check:', existingMember ? 'Found' : 'Not found');
 
     if (!existingMember) {
       // Only insert if not already a member
       try {
-        console.log('➕ Adding user to members table:', { sessionId: session.id, userId, userName });
+        logger.info('➕ Adding user to members table:', { sessionId: session.id, userId, userName });
         await supabase
           .from('members')
           .insert({
@@ -125,13 +126,13 @@ export function useSessions() {
             name: userName,
             created_at: new Date().toISOString(),
           });
-        console.log('✅ Successfully added user to members');
+        logger.info('✅ Successfully added user to members');
       } catch (err) {
-        console.error('❌ Error adding user to members:', err);
+        logger.error('❌ Error adding user to members:', err);
         throw err; // This is critical, so throw
       }
     } else {
-      console.log('ℹ️ User already exists in members table');
+      logger.info('ℹ️ User already exists in members table');
     }
 
     await loadSessions();
@@ -144,7 +145,7 @@ export function useSessions() {
   };
 
   const refresh = () => {
-    console.log('🔄 Force refreshing sessions...');
+    logger.info('🔄 Force refreshing sessions...');
     loadSessions(true); // Pass true to indicate this is a refresh
   };
 

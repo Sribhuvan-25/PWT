@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Member } from '@/types';
 import * as MembersRepo from '@/db/repositories/members';
+import { logger } from '@/utils/logger';
 
 export function useMembers(sessionId: string | null) {
   const [members, setMembers] = useState<Member[]>([]);
@@ -20,7 +21,7 @@ export function useMembers(sessionId: string | null) {
       const data = await MembersRepo.getMembersBySessionId(sessionId);
       setMembers(data);
     } catch (err) {
-      console.error('Error loading members:', err);
+      logger.error('Error loading members:', err);
       setError(err instanceof Error ? err.message : 'Failed to load members');
     } finally {
       setLoading(false);

@@ -9,6 +9,8 @@
  * - logger.debug() - Debug information (dev only)
  */
 
+import { Sentry, isSentryConfigured } from './sentry';
+
 type LogLevel = 'log' | 'info' | 'warn' | 'error' | 'debug';
 
 interface LogEntry {
@@ -45,13 +47,13 @@ class Logger {
   warn(message: string, ...args: any[]): void {
     console.warn(`[WARN] ${message}`, ...args);
 
-    // TODO: Send to crash reporting service
-    // if (!this.isDev) {
-    //   Sentry.captureMessage(message, {
-    //     level: 'warning',
-    //     extra: args.length > 0 ? { data: args } : undefined,
-    //   });
-    // }
+    // Send to crash reporting service
+    if (!this.isDev && isSentryConfigured()) {
+      Sentry.Native.captureMessage(message, {
+        level: 'warning',
+        extra: args.length > 0 ? { data: args } : undefined,
+      });
+    }
   }
 
   /**
@@ -60,19 +62,19 @@ class Logger {
   error(message: string, error?: Error | any, ...args: any[]): void {
     console.error(`[ERROR] ${message}`, error, ...args);
 
-    // TODO: Send to crash reporting service
-    // if (!this.isDev) {
-    //   if (error instanceof Error) {
-    //     Sentry.captureException(error, {
-    //       extra: { message, ...args },
-    //     });
-    //   } else {
-    //     Sentry.captureMessage(message, {
-    //       level: 'error',
-    //       extra: { error, ...args },
-    //     });
-    //   }
-    // }
+    // Send to crash reporting service
+    if (!this.isDev && isSentryConfigured()) {
+      if (error instanceof Error) {
+        Sentry.Native.captureException(error, {
+          extra: { message, ...args },
+        });
+      } else {
+        Sentry.Native.captureMessage(message, {
+          level: 'error',
+          extra: { error, ...args },
+        });
+      }
+    }
   }
 
   /**
@@ -127,14 +129,14 @@ class Logger {
       console.log(`[BREADCRUMB] ${message}`, data);
     }
 
-    // TODO: Send to crash reporting service
-    // if (!this.isDev) {
-    //   Sentry.addBreadcrumb({
-    //     message,
-    //     data,
-    //     level: 'info',
-    //   });
-    // }
+    // Send to crash reporting service
+    if (!this.isDev && isSentryConfigured()) {
+      Sentry.Native.addBreadcrumb({
+        message,
+        data,
+        level: 'info',
+      });
+    }
   }
 
   /**
@@ -145,14 +147,14 @@ class Logger {
       console.log(`[USER] Set user context: ${userId}`, email);
     }
 
-    // TODO: Send to crash reporting service
-    // if (!this.isDev) {
-    //   if (userId) {
-    //     Sentry.setUser({ id: userId, email });
-    //   } else {
-    //     Sentry.setUser(null);
-    //   }
-    // }
+    // Send to crash reporting service
+    if (!this.isDev && isSentryConfigured()) {
+      if (userId) {
+        Sentry.Native.setUser({ id: userId, email });
+      } else {
+        Sentry.Native.setUser(null);
+      }
+    }
   }
 
   /**
@@ -163,10 +165,10 @@ class Logger {
       console.log('[USER] Cleared user context');
     }
 
-    // TODO: Send to crash reporting service
-    // if (!this.isDev) {
-    //   Sentry.setUser(null);
-    // }
+    // Send to crash reporting service
+    if (!this.isDev && isSentryConfigured()) {
+      Sentry.Native.setUser(null);
+    }
   }
 }
 
