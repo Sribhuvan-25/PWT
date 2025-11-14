@@ -46,6 +46,9 @@ export default function SessionDetailsScreen() {
   const { members } = useMembers(sessionId);
   const { buyIns, addBuyIn: addBuyInToDb } = useBuyIns(sessionId);
 
+  // Find current session - needs to be declared before hooks that use it
+  const session = sessions.find((s) => s.id === sessionId);
+
   // Use custom hooks
   const { memberData, buyInHistory, reload: reloadSessionData } = useSessionData(
     sessionId,
@@ -81,8 +84,6 @@ export default function SessionDetailsScreen() {
   const [settlements, setSettlements] = useState<
     Array<{ fromMemberName: string; toMemberName: string; amountCents: number }>
   >([]);
-
-  const session = sessions.find((s) => s.id === sessionId);
 
   const validateTotals = (): {
     valid: boolean;

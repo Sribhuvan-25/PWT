@@ -10,6 +10,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -175,6 +177,9 @@ export async function scheduleNotification(
   triggerDate: Date,
   data?: Record<string, any>
 ): Promise<string> {
+  // Calculate seconds from now
+  const secondsFromNow = Math.max(1, Math.floor((triggerDate.getTime() - Date.now()) / 1000));
+
   const notificationId = await Notifications.scheduleNotificationAsync({
     content: {
       title,
@@ -183,7 +188,8 @@ export async function scheduleNotification(
       sound: true,
     },
     trigger: {
-      date: triggerDate,
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: secondsFromNow,
     },
   });
 

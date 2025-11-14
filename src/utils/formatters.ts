@@ -71,3 +71,24 @@ export function getRelativeTime(dateString: string): string {
 export function getTodayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
+
+/**
+ * Format cents to dollar amount
+ * @param cents - Amount in cents (e.g., 10000 = $100.00)
+ * @returns Formatted dollar string (e.g., "$100.00")
+ */
+export function formatCents(cents: number): string {
+  const dollars = cents / 100;
+  return `$${dollars.toFixed(2)}`;
+}
+
+/**
+ * Format cents to dollar amount with sign
+ * @param cents - Amount in cents (can be positive or negative)
+ * @returns Formatted dollar string with sign (e.g., "+$100.00" or "-$50.00")
+ */
+export function formatCentsWithSign(cents: number): string {
+  const dollars = Math.abs(cents) / 100;
+  const sign = cents >= 0 ? '+' : '-';
+  return `${sign}$${dollars.toFixed(2)}`;
+}
